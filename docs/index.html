@@ -11,6 +11,7 @@
     --bg: #071620;
     --panel: #0d2634;
     --line: #1b3a4b;
+    --sep: rgba(230, 240, 243, .16);
     --ink: #e7f0f3;
     --dim: #8aa6b1;
     --teal: #78d6e9;
@@ -54,7 +55,7 @@
   section { padding: 64px 0; position: relative; }
   section::before, section::after {
     content: ""; position: absolute; left: 24px; right: 24px;
-    height: 1px; background: var(--line);
+    height: 1px; background: var(--sep);
   }
   section::before { top: 0; }
   section::after { bottom: 0; }
@@ -91,7 +92,7 @@
   footer { padding: 48px 0 72px; text-align: center; color: var(--dim); font-size: 14px; position: relative; }
   footer::before {
     content: ""; position: absolute; top: 0; left: 24px; right: 24px;
-    height: 1px; background: var(--line);
+    height: 1px; background: var(--sep);
   }
 
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
