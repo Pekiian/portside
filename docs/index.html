@@ -50,12 +50,14 @@
   .btn.ghost { color: var(--ink); }
   .btn.ghost:hover { text-decoration: none; border-color: var(--teal); }
 
-  /* sections — separators inset from the edges */
+  /* sections — separators inset from the edges, top and bottom */
   section { padding: 64px 0; position: relative; }
-  section::before {
-    content: ""; position: absolute; top: 0; left: 24px; right: 24px;
+  section::before, section::after {
+    content: ""; position: absolute; left: 24px; right: 24px;
     height: 1px; background: var(--line);
   }
+  section::before { top: 0; }
+  section::after { bottom: 0; }
   h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--dim); margin: 0 0 28px; font-weight: 600; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
