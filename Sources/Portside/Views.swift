@@ -8,8 +8,8 @@ struct MenuContentView: View {
     @EnvironmentObject var model: AppModel
     @EnvironmentObject var prefs: Preferences
     @State private var showSettings = false
-    @State private var renamingPort: Int?
-    @State private var renameText = ""
+    @State private var editingPort: Int?
+    @State private var draft = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,7 +23,14 @@ struct MenuContentView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(model.rows) { row in
-                            ListenerRow(row: row, onRename: { startRename(row) })
+                            ListenerRow(
+                                row: row,
+                                isEditing: editingPort == row.port,
+                                draft: $draft,
+                                onBeginRename: { beginRename(row) },
+                                onCommit: commitRename,
+                                onCancel: { editingPort = nil }
+                            )
                             if row.id != model.rows.last?.id { Divider().opacity(0.4) }
                         }
                     }
@@ -36,12 +43,6 @@ struct MenuContentView: View {
             footer
         }
         .frame(width: 380)
-        .alert(Text(verbatim: "Rename port " + (renamingPort.map { ":" + String($0) } ?? "")), isPresented: renameBinding) {
-            TextField("Label", text: $renameText)
-            Button("Save") { commitRename() }
-            Button("Clear", role: .destructive) { renameText = ""; commitRename() }
-            Button("Cancel", role: .cancel) {}
-        }
     }
 
     private var header: some View {
@@ -84,18 +85,16 @@ struct MenuContentView: View {
         .padding(.bottom, 12)
     }
 
-    // MARK: rename plumbing
+    // MARK: inline rename
 
-    private var renameBinding: Binding<Bool> {
-        Binding(get: { renamingPort != nil }, set: { if !$0 { renamingPort = nil } })
-    }
-    private func startRename(_ row: PortRow) {
-        renameText = model.prefs.label(for: row.port) ?? ""
-        renamingPort = row.port
+    private func beginRename(_ row: PortRow) {
+        draft = model.prefs.label(for: row.port) ?? ""
+        editingPort = row.port
     }
     private func commitRename() {
-        if let port = renamingPort { model.prefs.setLabel(renameText, for: port) }
-        renamingPort = nil
+        guard let port = editingPort else { return }
+        model.prefs.setLabel(draft, for: port)   // empty clears the label
+        editingPort = nil
     }
 }
 
@@ -103,9 +102,14 @@ struct MenuContentView: View {
 
 struct ListenerRow: View {
     let row: PortRow
-    let onRename: () -> Void
+    var isEditing: Bool
+    @Binding var draft: String
+    var onBeginRename: () -> Void
+    var onCommit: () -> Void
+    var onCancel: () -> Void
     @EnvironmentObject var model: AppModel
     @State private var hovering = false
+    @FocusState private var fieldFocused: Bool
 
     var body: some View {
         HStack(spacing: 8) {
@@ -116,10 +120,20 @@ struct ListenerRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(row.title)
-                        .font(.system(size: 13))
-                        .lineLimit(1)
-                        .foregroundStyle(row.isListening ? .primary : .secondary)
+                    if isEditing {
+                        TextField("Label", text: $draft)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 13))
+                            .focused($fieldFocused)
+                            .onSubmit(onCommit)
+                            .onExitCommand(perform: onCancel)      // Esc cancels
+                            .onAppear { fieldFocused = true }
+                    } else {
+                        Text(row.title)
+                            .font(.system(size: 13))
+                            .lineLimit(1)
+                            .foregroundStyle(row.isListening ? .primary : .secondary)
+                    }
                     if row.pinned {
                         Image(systemName: "pin.fill")
                             .font(.system(size: 9))
@@ -159,6 +173,7 @@ struct ListenerRow: View {
         .contentShape(Rectangle())
         .background(hovering ? Color.primary.opacity(0.06) : .clear)
         .onHover { hovering = $0 }
+        .onTapGesture(count: 2) { onBeginRename() }
         .onTapGesture { handleTap() }
         .contextMenu { contextMenu }
     }
@@ -191,6 +206,7 @@ struct ListenerRow: View {
     }
 
     private func handleTap() {
+        guard !isEditing else { return }   // don't hijack clicks in the text field
         guard row.isListening else { return }
         if NSEvent.modifierFlags.contains(.command) {
             model.copyURL(row)
@@ -211,7 +227,7 @@ struct ListenerRow: View {
         Button(model.prefs.isPinned(row.port) ? "Unpin" : "Pin") {
             model.prefs.togglePin(row.port)
         }
-        Button("Rename…", action: onRename)
+        Button("Rename", action: onBeginRename)
         if row.isListening {
             Divider()
             Button("Kill") { model.kill(row, force: false) }
