@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portside — see what's listening on localhost</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23091c28'/%3E%3Ccircle cx='50' cy='50' r='31' fill='none' stroke='%23e0e8ec' stroke-width='5'/%3E%3Cpath d='M50 36 L36 60 L64 60 Z' fill='none' stroke='%2378d6e9' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='50' cy='36' r='5' fill='%2378d6e9'/%3E%3Ccircle cx='36' cy='60' r='5' fill='%23ecf6f9'/%3E%3Ccircle cx='64' cy='60' r='5' fill='%23ecf6f9'/%3E%3C/svg%3E">
+<meta name="description" content="A native macOS menu bar app that shows what's listening on localhost and lets you open, copy, kill, pin, and rename ports.">
+<style>
+  :root {
+    --bg: #071620;
+    --panel: #0d2634;
+    --line: #1b3a4b;
+    --ink: #e7f0f3;
+    --dim: #8aa6b1;
+    --teal: #78d6e9;
+    --brass: #e0e8ec;
+    --red: #ff6b6b;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: radial-gradient(1100px 560px at 72% -12%, rgba(18,71,92,.55) 0, transparent 60%), var(--bg);
+    background-color: var(--bg);
+    background-attachment: fixed;
+    color: var(--ink);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  a { color: var(--teal); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+
+  /* hero */
+  header { padding: 96px 0 64px; text-align: center; }
+  .logo { width: 88px; height: 88px; display: block; margin: 0 auto 22px; }
+  h1 { font-size: 44px; margin: 0 0 10px; letter-spacing: -0.02em; }
+  .tag { font-size: 19px; color: var(--dim); margin: 0 auto 32px; max-width: 30ch; }
+  .btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 11px 20px; border-radius: 10px; font-weight: 600; font-size: 15px;
+    border: 1px solid var(--line);
+  }
+  .btn.primary { background: var(--teal); color: #04222c; border-color: var(--teal); }
+  .btn.primary:hover { text-decoration: none; filter: brightness(1.08); }
+  .btn.ghost { color: var(--ink); }
+  .btn.ghost:hover { text-decoration: none; border-color: var(--teal); }
+
+  /* sections — separators inset from the edges */
+  section { padding: 64px 0; position: relative; }
+  section::before {
+    content: ""; position: absolute; top: 0; left: 24px; right: 24px;
+    height: 1px; background: var(--line);
+  }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--dim); margin: 0 0 28px; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .card h3 { margin: 0 0 6px; font-size: 16px; }
+  .card p { margin: 0; color: var(--dim); font-size: 14px; }
+
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px; counter-reset: s; }
+  .step { position: relative; padding-left: 44px; }
+  .step::before {
+    counter-increment: s; content: counter(s);
+    position: absolute; left: 0; top: -2px;
+    width: 30px; height: 30px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: #04222c; color: var(--teal); border: 1px solid var(--teal); font-weight: 600; font-size: 14px;
+  }
+  .step h3 { margin: 0 0 4px; font-size: 16px; }
+  .step p { margin: 0; color: var(--dim); font-size: 14px; }
+
+  .cmd {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: #04161f; border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; margin-top: 24px; font-size: 13.5px; color: var(--ink);
+  }
+  .cmd code { color: var(--brass); }
+  .cmd button {
+    background: transparent; border: 1px solid var(--line); color: var(--dim);
+    border-radius: 7px; padding: 6px 12px; font-size: 12px; cursor: pointer; white-space: nowrap;
+  }
+  .cmd button:hover { border-color: var(--teal); color: var(--teal); }
+
+  footer { padding: 48px 0 72px; text-align: center; color: var(--dim); font-size: 14px; position: relative; }
+  footer::before {
+    content: ""; position: absolute; top: 0; left: 24px; right: 24px;
+    height: 1px; background: var(--line);
+  }
+
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <!-- porthole + network-node glyph, echoing the app icon -->
+  <svg class="logo" viewBox="0 0 100 100" aria-label="Portside logo">
+    <defs>
+      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#12475c"/><stop offset="1" stop-color="#091c28"/>
+      </linearGradient>
+    </defs>
+    <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#bg)"/>
+    <circle cx="50" cy="50" r="31" fill="none" stroke="#e0e8ec" stroke-width="4.5" opacity="0.95"/>
+    <circle cx="50" cy="50" r="28" fill="#07161f"/>
+    <path d="M50 36 L36 60 L64 60 Z" fill="none" stroke="#78d6e9" stroke-width="2.6" stroke-linejoin="round"/>
+    <circle cx="50" cy="36" r="4.6" fill="#78d6e9"/>
+    <circle cx="36" cy="60" r="4.6" fill="#ecf6f9"/>
+    <circle cx="64" cy="60" r="4.6" fill="#ecf6f9"/>
+  </svg>
+
+  <h1>Portside</h1>
+  <p class="tag">See what's listening on <span class="mono" style="color:var(--teal)">localhost</span>. Open it, kill it, done.</p>
+  <div class="btns">
+    <a class="btn primary" href="https://github.com/Pekiian/portside">View on GitHub →</a>
+    <a class="btn ghost" href="#how">How it works</a>
+  </div>
+</header>
+
+<section class="wrap">
+  <h2>What it is</h2>
+  <p style="max-width:62ch;color:var(--dim);margin:0;font-size:17px">
+    A native macOS menu bar app. It lists every TCP port reachable at
+    <span class="mono" style="color:var(--ink)">http://localhost:PORT</span> — nothing else.
+    No LAN scanning, no remote hosts, no general network tool. Just your dev servers,
+    one click away from opening or killing.
+  </p>
+</section>
+
+<section class="wrap">
+  <h2>Features</h2>
+  <div class="grid">
+    <div class="card"><h3>Localhost only</h3><p>Loopback and wildcard binds. LAN, link-local, and UDP are excluded. Dual-stack ports shown once.</p></div>
+    <div class="card"><h3>Knows your servers</h3><p>Tags Vite, Next, Node, Bun, Deno, Rails, Django, Postgres, Redis, Docker and more from the command line.</p></div>
+    <div class="card"><h3>Workspace labels</h3><p>Two <span class="mono">storefront</span>s? Rows show the workspace path so you can tell them apart at a glance.</p></div>
+    <div class="card"><h3>Open or kill</h3><p>Click to open in the browser, ⌘-click to copy the URL, one button to kill — SIGTERM, then SIGKILL after 3s.</p></div>
+    <div class="card"><h3>Pin &amp; rename</h3><p>Pin ports to the top with a placeholder when they're down. Rename <span class="mono">:5432</span> to "work db" inline.</p></div>
+    <div class="card"><h3>Native &amp; quiet</h3><p>SwiftUI menu bar app, follows light/dark, sleep-aware polling. No dock icon, no chrome, no telemetry.</p></div>
+  </div>
+</section>
+
+<section class="wrap" id="how">
+  <h2>How it works</h2>
+  <div class="steps">
+    <div class="step"><h3>Reads locally</h3><p>Runs <span class="mono">lsof</span> and <span class="mono">ps</span> on your machine to find listeners and their processes.</p></div>
+    <div class="step"><h3>Filters &amp; enriches</h3><p>Keeps only localhost-reachable ports, then adds cwd, project name, runtime, and uptime.</p></div>
+    <div class="step"><h3>Sends nothing</h3><p>No network calls, no sandbox exception, no accounts. Everything stays on your Mac.</p></div>
+  </div>
+
+  <div class="cmd">
+    <span class="mono"><code>git clone https://github.com/Pekiian/portside &amp;&amp; cd portside &amp;&amp; ./build.sh --install</code></span>
+    <button id="copy">Copy</button>
+  </div>
+</section>
+
+<footer class="wrap">
+  Runs <span class="mono">lsof</span>/<span class="mono">ps</span> locally, sends nothing anywhere.
+  &nbsp;·&nbsp; <a href="https://github.com/Pekiian/portside">GitHub</a>
+</footer>
+
+<script>
+  // copy build command
+  const copy = document.getElementById("copy");
+  copy.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText("git clone https://github.com/Pekiian/portside && cd portside && ./build.sh --install");
+      copy.textContent = "Copied";
+      setTimeout(() => (copy.textContent = "Copy"), 1500);
+    } catch { copy.textContent = "Copy failed"; }
+  });
+</script>
+</body>
+</html>
