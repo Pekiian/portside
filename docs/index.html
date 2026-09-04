@@ -4,177 +4,325 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Portside — see what's listening on localhost</title>
+<meta name="description" content="A native macOS menu bar app that lists every port listening on localhost, names the project behind it, and lets you open or kill it in one click.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23091c28'/%3E%3Ccircle cx='50' cy='50' r='31' fill='none' stroke='%23e0e8ec' stroke-width='5'/%3E%3Cpath d='M50 36 L36 60 L64 60 Z' fill='none' stroke='%2378d6e9' stroke-width='3' stroke-linejoin='round'/%3E%3Ccircle cx='50' cy='36' r='5' fill='%2378d6e9'/%3E%3Ccircle cx='36' cy='60' r='5' fill='%23ecf6f9'/%3E%3Ccircle cx='64' cy='60' r='5' fill='%23ecf6f9'/%3E%3C/svg%3E">
-<meta name="description" content="A native macOS menu bar app that shows what's listening on localhost and lets you open, copy, kill, pin, and rename ports.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #071620;
-    --panel: #0d2634;
-    --line: #1b3a4b;
-    --sep: rgba(255, 255, 255, .28);
-    --ink: #e7f0f3;
-    --dim: #8aa6b1;
-    --teal: #78d6e9;
-    --brass: #e0e8ec;
-    --red: #ff6b6b;
-    --radius: 14px;
+    --paper:  #eaedec;
+    --raised: #f6f8f7;
+    --ink:    #0b2430;
+    --ink-2:  #46626d;
+    --ink-3:  #7d949d;
+    --rule:   #c9d2d1;
+    --teal:   #0c6b7e;
+
+    /* the popover, in dark mode */
+    --panel:      #16232b;
+    --panel-rule: rgba(255,255,255,.1);
+    --panel-ink:  #e7f0f3;
+    --panel-dim:  #93a8b1;
   }
+
   * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
   body {
     margin: 0;
-    background: radial-gradient(1100px 560px at 72% -12%, rgba(18,71,92,.55) 0, transparent 60%), var(--bg);
-    background-color: var(--bg);
-    background-attachment: fixed;
+    background: var(--paper);
     color: var(--ink);
-    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-family: Archivo, system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
   }
-  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  a { color: var(--teal); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  a { color: var(--teal); text-underline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; border-radius: 3px; }
+  .wrap { width: min(1040px, 100% - 44px); margin-inline: auto; }
+
+  .masthead { display: flex; align-items: center; justify-content: space-between; padding: 20px 0; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; }
+  .brand svg { width: 24px; height: 24px; border-radius: 6px; display: block; }
+  .masthead a { color: var(--ink-2); text-decoration: none; font-size: 14px; }
+  .masthead a:hover { color: var(--teal); }
 
   /* hero */
-  header { padding: 96px 0 64px; text-align: center; }
-  .logo { width: 88px; height: 88px; display: block; margin: 0 auto 22px; }
-  h1 { font-size: 44px; margin: 0 0 10px; letter-spacing: -0.02em; }
-  .tag { font-size: 19px; color: var(--dim); margin: 0 auto 32px; max-width: 30ch; }
-  .btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 11px 20px; border-radius: 10px; font-weight: 600; font-size: 15px;
-    border: 1px solid var(--line);
-  }
-  .btn.primary { background: var(--teal); color: #04222c; border-color: var(--teal); }
-  .btn.primary:hover { text-decoration: none; filter: brightness(1.08); }
-  .btn.ghost { color: var(--ink); }
-  .btn.ghost:hover { text-decoration: none; border-color: var(--teal); }
+  .hero { display: grid; grid-template-columns: 1fr 380px; gap: 64px; align-items: center; padding: 36px 0 80px; }
+  h1 { font-size: clamp(34px, 4.4vw, 48px); line-height: 1.05; letter-spacing: -.035em; font-weight: 700; margin: 0 0 18px; max-width: 15ch; }
+  h1 .mono { font-weight: 500; font-size: .86em; letter-spacing: -.02em; margin-left: -.06em; }
+  h1 .nb { white-space: nowrap; }
+  .lede { font-size: 18px; color: var(--ink-2); margin: 0 0 28px; max-width: 40ch; }
+  .actions { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .cta { background: var(--ink); color: var(--paper); text-decoration: none; font-weight: 600; font-size: 15px; padding: 12px 21px; border-radius: 9px; }
+  .cta:hover { background: var(--teal); }
+  .actions .plain { color: var(--ink-2); text-decoration: none; font-size: 15px; }
+  .actions .plain:hover { color: var(--teal); text-decoration: underline; }
 
-  /* sections — separators inset from the edges, top and bottom */
-  section { padding: 64px 0; position: relative; }
-  section::before, section::after {
-    content: ""; position: absolute; left: 24px; right: 24px;
-    height: 1px; background: var(--sep);
+  /* popover replica — metrics match Views.swift exactly */
+  .stage { justify-self: end; width: 380px; }
+  .menubar {
+    display: flex; align-items: center; justify-content: flex-end; gap: 15px;
+    background: #0f1a21; border-radius: 7px 7px 0 0; padding: 5px 11px;
+    font-size: 11px; color: rgba(255,255,255,.5);
   }
-  section::before { top: 0; }
-  section::after { bottom: 0; }
-  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--dim); margin: 0 0 28px; font-weight: 600; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
-  .card h3 { margin: 0 0 6px; font-size: 16px; }
-  .card p { margin: 0; color: var(--dim); font-size: 14px; }
+  .menubar .live { display: flex; align-items: center; gap: 4px; color: #fff; }
+  .menubar .live svg { width: 13px; height: 13px; }
+  .panel {
+    width: 380px; background: var(--panel); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 11px; margin-top: 7px; overflow: hidden; color: var(--panel-ink);
+    box-shadow: 0 26px 56px -18px rgba(11,36,48,.5), 0 5px 14px -8px rgba(11,36,48,.3);
+  }
+  .panel-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 12px 12px 8px; border-bottom: 1px solid var(--panel-rule);
+  }
+  .panel-head b { font-size: 12px; font-weight: 600; color: var(--panel-dim); }
+  .panel-head span { font-size: 11px; color: var(--panel-dim); opacity: .8; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--panel-rule); }
+  .row .port { font-size: 13px; font-weight: 500; width: 56px; flex: none; }
+  .row .body { min-width: 0; flex: 1; }
+  .row .name { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 1.3; }
+  .row .name > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .sub { font-size: 11px; color: var(--panel-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .up { font-size: 11px; color: var(--panel-dim); flex: none; }
+  .pill { font-size: 10px; font-weight: 500; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,.15); color: var(--panel-dim); flex: none; }
+  .pin { width: 9px; height: 9px; flex: none; fill: var(--panel-dim); opacity: .7; }
+  .row.down .port, .row.down .name { color: var(--panel-dim); }
+  .row.hot { background: rgba(255,255,255,.06); }
+  .kill { width: 13px; height: 13px; flex: none; stroke: #ff6b6b; fill: none; stroke-width: 1.7; }
+  .panel-foot { display: flex; justify-content: space-between; padding: 8px 12px 12px; font-size: 11px; color: var(--panel-dim); }
 
-  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 20px; counter-reset: s; }
-  .step { position: relative; padding-left: 44px; }
-  .step::before {
-    counter-increment: s; content: counter(s);
-    position: absolute; left: 0; top: -2px;
-    width: 30px; height: 30px; border-radius: 50%;
-    display: grid; place-items: center;
-    background: #04222c; color: var(--teal); border: 1px solid var(--teal); font-weight: 600; font-size: 14px;
-  }
-  .step h3 { margin: 0 0 4px; font-size: 16px; }
-  .step p { margin: 0; color: var(--dim); font-size: 14px; }
+  /* sections */
+  .band { border-top: 1px solid var(--rule); padding: 68px 0; }
+  h2 { font-size: 28px; line-height: 1.15; letter-spacing: -.028em; font-weight: 700; margin: 0 0 12px; }
+  .band p { color: var(--ink-2); margin: 0; max-width: 54ch; }
 
-  .cmd {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    background: #04161f; border: 1px solid var(--line); border-radius: 10px;
-    padding: 14px 16px; margin-top: 24px; font-size: 13.5px; color: var(--ink);
-  }
-  .cmd code { color: var(--brass); }
-  .cmd button {
-    background: transparent; border: 1px solid var(--line); color: var(--dim);
-    border-radius: 7px; padding: 6px 12px; font-size: 12px; cursor: pointer; white-space: nowrap;
-  }
-  .cmd button:hover { border-color: var(--teal); color: var(--teal); }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; margin-top: 34px; }
+  .slab { background: var(--raised); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+  .slab .cap { font-size: 12px; color: var(--ink-2); padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+  .slab .cap b { color: var(--ink); font-weight: 600; }
+  .srow { display: flex; align-items: baseline; gap: 11px; padding: 8px 14px; border-bottom: 1px solid var(--rule); font-size: 13px; }
+  .srow:last-child { border-bottom: 0; }
+  .srow .p { font-size: 12px; color: var(--ink-2); width: 46px; flex: none; }
+  .srow .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .before .n { color: var(--ink-3); }
+  .after .n { font-weight: 500; }
+  .srow .img { margin-left: auto; font-size: 11px; color: var(--ink-3); flex: none; }
 
-  footer { padding: 48px 0 72px; text-align: center; color: var(--dim); font-size: 14px; position: relative; }
-  footer::before {
-    content: ""; position: absolute; top: 0; left: 24px; right: 24px;
-    height: 1px; background: var(--sep);
-  }
+  .ledger { margin: 30px 0 0; border-top: 1px solid var(--rule); }
+  .entry { display: grid; grid-template-columns: 190px 1fr; gap: 28px; padding: 15px 0; border-bottom: 1px solid var(--rule); }
+  .entry dt { font-weight: 600; }
+  .entry dd { margin: 0; color: var(--ink-2); max-width: 56ch; }
+  .entry .mono { font-size: .92em; color: var(--ink); }
 
-  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  .cmd { display: flex; align-items: center; gap: 12px; margin-top: 24px; background: var(--panel); border-radius: 10px; padding: 14px 14px 14px 17px; }
+  .cmd code { color: #d5e6ea; font-size: 13px; flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
+  .cmd code::-webkit-scrollbar { display: none }
+  #copy { font: inherit; font-size: 12px; font-weight: 500; flex: none; cursor: pointer; background: rgba(255,255,255,.1); color: var(--panel-ink); border: 0; border-radius: 7px; padding: 7px 14px; }
+  #copy:hover { background: rgba(255,255,255,.18); }
+  .band p.req { margin-top: 18px; font-size: 14px; }
+
+  footer { border-top: 1px solid var(--rule); padding: 26px 0 48px; font-size: 14px; color: var(--ink-2); }
+  footer .wrap { display: flex; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+
+  @media (max-width: 880px) {
+    .hero { grid-template-columns: 1fr; gap: 46px; padding-bottom: 56px; }
+    .stage { justify-self: start; width: 100%; max-width: 380px; }
+    .panel { width: 100%; }
+    h1 { max-width: 16ch; }
+    .compare { grid-template-columns: 1fr; gap: 14px; }
+    .entry { grid-template-columns: 1fr; gap: 2px; }
+    .band { padding: 52px 0; }
+  }
 </style>
 </head>
 <body>
 
-<header class="wrap">
-  <!-- porthole + network-node glyph, echoing the app icon -->
-  <svg class="logo" viewBox="0 0 100 100" aria-label="Portside logo">
-    <defs>
-      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="#12475c"/><stop offset="1" stop-color="#091c28"/>
-      </linearGradient>
-    </defs>
-    <rect x="2" y="2" width="96" height="96" rx="22" fill="url(#bg)"/>
-    <circle cx="50" cy="50" r="31" fill="none" stroke="#e0e8ec" stroke-width="4.5" opacity="0.95"/>
-    <circle cx="50" cy="50" r="28" fill="#07161f"/>
-    <path d="M50 36 L36 60 L64 60 Z" fill="none" stroke="#78d6e9" stroke-width="2.6" stroke-linejoin="round"/>
-    <circle cx="50" cy="36" r="4.6" fill="#78d6e9"/>
-    <circle cx="36" cy="60" r="4.6" fill="#ecf6f9"/>
-    <circle cx="64" cy="60" r="4.6" fill="#ecf6f9"/>
-  </svg>
-
-  <h1>Portside</h1>
-  <p class="tag">See what's listening on <span class="mono" style="color:var(--teal)">localhost</span>. Open it, kill it, done.</p>
-  <div class="btns">
-    <a class="btn primary" href="https://github.com/Pekiian/portside">View on GitHub →</a>
-    <a class="btn ghost" href="#how">How it works</a>
+<header class="masthead wrap">
+  <div class="brand">
+    <svg viewBox="0 0 100 100" aria-hidden="true">
+      <rect width="100" height="100" rx="22" fill="#091c28"/>
+      <circle cx="50" cy="50" r="31" fill="none" stroke="#e0e8ec" stroke-width="5"/>
+      <path d="M50 36 L36 60 L64 60 Z" fill="none" stroke="#78d6e9" stroke-width="3" stroke-linejoin="round"/>
+      <circle cx="50" cy="36" r="5" fill="#78d6e9"/>
+      <circle cx="36" cy="60" r="5" fill="#ecf6f9"/>
+      <circle cx="64" cy="60" r="5" fill="#ecf6f9"/>
+    </svg>
+    Portside
   </div>
+  <a href="https://github.com/Pekiian/portside">GitHub</a>
 </header>
 
-<section class="wrap">
-  <h2>What it is</h2>
-  <p style="max-width:62ch;color:var(--dim);margin:0;font-size:17px">
-    A native macOS menu bar app. It lists every TCP port reachable at
-    <span class="mono" style="color:var(--ink)">http://localhost:PORT</span> — nothing else.
-    No LAN scanning, no remote hosts, no general network tool. Just your dev servers,
-    one click away from opening or killing.
-  </p>
-</section>
+<main>
+<section class="hero wrap">
+  <div>
+    <h1>What's on <span class="nb"><span class="mono">:5433</span>?</span></h1>
+    <p class="lede">Every port listening on localhost, named by the project behind it. Click a row to open it. Click stop to kill it.</p>
+    <div class="actions">
+      <a class="cta" href="#install">Install it</a>
+      <a class="plain" href="https://github.com/Pekiian/portside">Read the source</a>
+    </div>
+  </div>
 
-<section class="wrap">
-  <h2>Features</h2>
-  <div class="grid">
-    <div class="card"><h3>Localhost only</h3><p>Loopback and wildcard binds. LAN, link-local, and UDP are excluded. Dual-stack ports shown once.</p></div>
-    <div class="card"><h3>Knows your servers</h3><p>Tags Vite, Next, Node, Bun, Deno, Rails, Django, Postgres, Redis, Docker and more from the command line.</p></div>
-    <div class="card"><h3>Workspace labels</h3><p>Two <span class="mono">storefront</span>s? Rows show the workspace path so you can tell them apart at a glance.</p></div>
-    <div class="card"><h3>Open or kill</h3><p>Click to open in the browser, ⌘-click to copy the URL, one button to kill — SIGTERM, then SIGKILL after 3s.</p></div>
-    <div class="card"><h3>Pin &amp; rename</h3><p>Pin ports to the top with a placeholder when they're down. Rename <span class="mono">:5432</span> to "work db" inline.</p></div>
-    <div class="card"><h3>Native &amp; quiet</h3><p>SwiftUI menu bar app, follows light/dark, sleep-aware polling. No dock icon, no chrome, no telemetry.</p></div>
+  <div class="stage">
+    <div class="menubar">
+      <span class="live">
+        <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3">
+          <circle cx="8" cy="8" r="6.4"/><path d="M1.6 8h12.8M8 1.6c3.4 3.6 3.4 9.2 0 12.8M8 1.6c-3.4 3.6-3.4 9.2 0 12.8"/>
+        </svg>
+        <b class="mono" style="font-size:11px">5</b>
+      </span>
+      <span class="mono">23:07</span>
+    </div>
+
+    <div class="panel" role="img" aria-label="The Portside popover: a pinned port 5432 named work db that is not listening, then 3000 storefront on Vite, 5173 docs on Astro with its stop button showing, 5433 checkout-postgres and 6379 checkout-redis in Docker, and 8787 api on Node.">
+      <div class="panel-head"><b>Localhost</b><span class="mono">5 listening</span></div>
+
+      <div class="row down">
+        <span class="port mono">:5432</span>
+        <span class="body">
+          <span class="name"><span>work db</span>
+            <svg class="pin" viewBox="0 0 12 12" aria-hidden="true"><path d="M7.4.9 11 4.5 9.3 6.2 8.6 5.5 6.3 7.8l.4 2.5-1 1-2.4-2.4L1 12l-.5-.5L3.6 8 1.2 5.6l1-1 2.5.4L7 2.7l-.7-.7z"/></svg>
+          </span>
+          <span class="sub">not listening</span>
+        </span>
+      </div>
+
+      <div class="row">
+        <span class="port mono">:3000</span>
+        <span class="body">
+          <span class="name"><span>storefront</span><span class="pill">Vite</span></span>
+          <span class="sub">…/acme/storefront</span>
+        </span>
+        <span class="up mono">2h 14m</span>
+      </div>
+
+      <div class="row hot">
+        <span class="port mono">:5173</span>
+        <span class="body">
+          <span class="name"><span>docs</span><span class="pill">Astro</span></span>
+          <span class="sub">…/acme/docs</span>
+        </span>
+        <svg class="kill" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8.2"/><rect x="7" y="7" width="6" height="6" rx="1.2"/></svg>
+      </div>
+
+      <div class="row">
+        <span class="port mono">:5433</span>
+        <span class="body">
+          <span class="name"><span>checkout-postgres</span><span class="pill">Docker</span></span>
+          <span class="sub">postgres:16-alpine</span>
+        </span>
+        <span class="up mono">3d 6h</span>
+      </div>
+
+      <div class="row">
+        <span class="port mono">:6379</span>
+        <span class="body">
+          <span class="name"><span>checkout-redis</span><span class="pill">Docker</span></span>
+          <span class="sub">redis:7-alpine</span>
+        </span>
+        <span class="up mono">3d 6h</span>
+      </div>
+
+      <div class="row">
+        <span class="port mono">:8787</span>
+        <span class="body">
+          <span class="name"><span>api</span><span class="pill">Node</span></span>
+          <span class="sub">…/acme/api</span>
+        </span>
+        <span class="up mono">18m</span>
+      </div>
+
+      <div class="panel-foot"><span>Settings</span><span>Quit</span></div>
+    </div>
   </div>
 </section>
 
-<section class="wrap" id="how">
-  <h2>How it works</h2>
-  <div class="steps">
-    <div class="step"><h3>Reads locally</h3><p>Runs <span class="mono">lsof</span> and <span class="mono">ps</span> on your machine to find listeners and their processes.</p></div>
-    <div class="step"><h3>Filters &amp; enriches</h3><p>Keeps only localhost-reachable ports, then adds cwd, project name, runtime, and uptime.</p></div>
-    <div class="step"><h3>Sends nothing</h3><p>No network calls, no sandbox exception, no accounts. Everything stays on your Mac.</p></div>
-  </div>
+<section class="band">
+  <div class="wrap">
+    <h2>Ten containers, one process</h2>
+    <p>Docker Desktop serves every published port from one process, so the tools underneath show ten identical rows. Portside asks Docker which container is on each port.</p>
 
-  <div class="cmd">
-    <span class="mono"><code>git clone https://github.com/Pekiian/portside &amp;&amp; cd portside &amp;&amp; ./build.sh --install</code></span>
-    <button id="copy">Copy</button>
+    <div class="compare">
+      <div class="slab before">
+        <div class="cap">What <b class="mono">lsof</b> can tell you</div>
+        <div class="srow"><span class="p mono">:5433</span><span class="n">com.docker.backend</span></div>
+        <div class="srow"><span class="p mono">:5544</span><span class="n">com.docker.backend</span></div>
+        <div class="srow"><span class="p mono">:6379</span><span class="n">com.docker.backend</span></div>
+        <div class="srow"><span class="p mono">:8080</span><span class="n">com.docker.backend</span></div>
+      </div>
+
+      <div class="slab after">
+        <div class="cap">What <b>Portside</b> shows</div>
+        <div class="srow"><span class="p mono">:5433</span><span class="n">checkout-postgres</span><span class="img mono">postgres:16-alpine</span></div>
+        <div class="srow"><span class="p mono">:5544</span><span class="n">analytics-postgres</span><span class="img mono">postgres:16</span></div>
+        <div class="srow"><span class="p mono">:6379</span><span class="n">checkout-redis</span><span class="img mono">redis:7-alpine</span></div>
+        <div class="srow"><span class="p mono">:8080</span><span class="n">gateway</span><span class="img mono">golang:1.25</span></div>
+      </div>
+    </div>
   </div>
 </section>
 
-<footer class="wrap">
-  Runs <span class="mono">lsof</span>/<span class="mono">ps</span> locally, sends nothing anywhere.
-  &nbsp;·&nbsp; <a href="https://github.com/Pekiian/portside">GitHub</a>
+<section class="band">
+  <div class="wrap">
+    <h2>What else it does</h2>
+    <dl class="ledger">
+      <div class="entry">
+        <dt>Localhost only</dt>
+        <dd>Loopback and wildcard binds. LAN, link-local, and UDP never appear.</dd>
+      </div>
+      <div class="entry">
+        <dt>Names, not pids</dt>
+        <dd>Rows say <span class="mono">storefront</span>, read from the working directory and <span class="mono">package.json</span>, instead of <span class="mono">node</span>.</dd>
+      </div>
+      <div class="entry">
+        <dt>Pin and rename</dt>
+        <dd>Keep <span class="mono">:5432</span> at the top and call it <span class="mono">work db</span>. Pinned ports stay in the list when they stop.</dd>
+      </div>
+      <div class="entry">
+        <dt>Kill without a terminal</dt>
+        <dd>SIGTERM, then SIGKILL after three seconds.</dd>
+      </div>
+      <div class="entry">
+        <dt>Quiet</dt>
+        <dd>No dock icon, no accounts, no telemetry. Polling stops while your Mac sleeps.</dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+<section class="band" id="install">
+  <div class="wrap">
+    <h2>Install</h2>
+    <p>Clone it and run the build script. It builds the app and puts it in <span class="mono">/Applications</span>.</p>
+    <div class="cmd">
+      <code class="mono">git clone https://github.com/Pekiian/portside &amp;&amp; cd portside &amp;&amp; ./build.sh --install</code>
+      <button id="copy" type="button">Copy</button>
+    </div>
+    <p class="req">Requires macOS 14 or later and the Swift toolchain.</p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Reads <span class="mono">lsof</span>, <span class="mono">ps</span>, and Docker's local socket. Makes no network calls.</span>
+    <a href="https://github.com/Pekiian/portside">github.com/Pekiian/portside</a>
+  </div>
 </footer>
 
 <script>
-  // copy build command
-  const copy = document.getElementById("copy");
-  copy.addEventListener("click", async () => {
+  const button = document.getElementById("copy");
+  const command = "git clone https://github.com/Pekiian/portside && cd portside && ./build.sh --install";
+  button.addEventListener("click", async () => {
     try {
-      await navigator.clipboard.writeText("git clone https://github.com/Pekiian/portside && cd portside && ./build.sh --install");
-      copy.textContent = "Copied";
-      setTimeout(() => (copy.textContent = "Copy"), 1500);
-    } catch { copy.textContent = "Copy failed"; }
+      await navigator.clipboard.writeText(command);
+      button.textContent = "Copied";
+    } catch {
+      button.textContent = "Press ⌘C";
+    }
+    setTimeout(() => (button.textContent = "Copy"), 1600);
   });
 </script>
 </body>

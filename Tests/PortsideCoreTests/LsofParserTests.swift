@@ -92,3 +92,18 @@ private func out(_ lines: String...) -> String {
     ))
     #expect(l.isEmpty)
 }
+
+@Test func wildcardBindsAreDistinguishedFromLoopback() {
+    func bind(_ raw: String, _ type: String = "IPv4") -> BindAddress { BindAddress(raw: raw, typeToken: type)! }
+    // every interface: also answers on the machine's LAN address
+    #expect(bind("*:5433").isWildcard)
+    #expect(bind("0.0.0.0:5433").isWildcard)
+    #expect(bind("[::]:5433", "IPv6").isWildcard)
+    // loopback: this Mac only
+    #expect(!bind("127.0.0.1:5037").isWildcard)
+    #expect(!bind("127.94.0.1:5037").isWildcard)
+    #expect(!bind("[::1]:5037", "IPv6").isWildcard)
+    // both kinds still count as reachable through localhost
+    #expect(bind("*:5433").isLocalhostReachable)
+    #expect(bind("127.0.0.1:5037").isLocalhostReachable)
+}

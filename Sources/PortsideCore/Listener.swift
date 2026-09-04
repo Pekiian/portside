@@ -35,12 +35,23 @@ public struct BindAddress: Equatable, Hashable {
         self.family = family
     }
 
+    /// Host without an IPv6 zone id, e.g. `fe80::1%en0` -> `fe80::1`.
+    private var bareHost: String {
+        host.split(separator: "%").first.map(String.init) ?? host
+    }
+
+    /// Bound to every interface (`*` / `0.0.0.0` / `::`) rather than loopback,
+    /// so the port answers on the LAN address too — not only on this Mac.
+    public var isWildcard: Bool {
+        let h = bareHost
+        return h == "*" || h == "0.0.0.0" || h == "::"
+    }
+
     /// True when reachable via `http://localhost:PORT`: loopback or a wildcard
     /// bind. LAN/external interface binds return false.
     public var isLocalhostReachable: Bool {
-        // strip IPv6 zone id, e.g. fe80::1%en0
-        let h = host.split(separator: "%").first.map(String.init) ?? host
-        if h == "*" || h == "0.0.0.0" || h == "::" { return true }
+        if isWildcard { return true }
+        let h = bareHost
         if h == "::1" { return true }
         // ponytail: whole 127.0.0.0/8 is loopback, not only 127.0.0.1
         if h.hasPrefix("127.") { return true }
@@ -64,6 +75,9 @@ public struct Listener: Identifiable, Equatable {
     public var runtime: String?
     public var command: String?
     public var startedAt: Date?
+    /// Secondary line override — the container image for Docker-published
+    /// ports, where the cwd is Docker's own storage and says nothing.
+    public var detail: String?
 
     // user prefs
     public var customLabel: String?
@@ -82,6 +96,7 @@ public struct Listener: Identifiable, Equatable {
         runtime: String? = nil,
         command: String? = nil,
         startedAt: Date? = nil,
+        detail: String? = nil,
         customLabel: String? = nil,
         pinned: Bool = false
     ) {
@@ -95,6 +110,7 @@ public struct Listener: Identifiable, Equatable {
         self.runtime = runtime
         self.command = command
         self.startedAt = startedAt
+        self.detail = detail
         self.customLabel = customLabel
         self.pinned = pinned
     }
@@ -102,5 +118,19 @@ public struct Listener: Identifiable, Equatable {
     /// What the row shows as its primary name: custom label > project > process.
     public var displayName: String {
         customLabel ?? projectName ?? processName
+    }
+
+    /// Second line of a row: the container image, else the workspace path —
+    /// with the process name in front when nothing else has identified the row.
+    /// A tool that merely inherited a project's directory (adb, cloudflared)
+    /// would otherwise show that directory on both lines and never say what it
+    /// is. When a runtime pill is present it already names the process, so the
+    /// name isn't repeated here.
+    public var subtitle: String {
+        if let detail { return detail }
+        let place = cwd.flatMap { workspaceLabel(cwd: $0) }
+        let unnamed = runtime == nil && displayName != processName
+        let parts = [unnamed ? processName : nil, place].compactMap { $0 }
+        return parts.isEmpty ? "pid \(pid)" : parts.joined(separator: " · ")
     }
 }
