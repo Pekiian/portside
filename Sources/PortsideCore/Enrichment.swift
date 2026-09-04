@@ -87,7 +87,9 @@ public func workspaceLabel(cwd: String, maxComponents: Int = 2) -> String? {
 }
 
 /// Project name: package.json `name` > cwd basename > nil.
-/// The basename is dropped when cwd is a throwaway location (root, home, temp).
+/// The basename is dropped when cwd is a throwaway location (root, home, temp)
+/// or app-support storage — `~/Library/Containers/com.docker.docker/Data` is
+/// nine Docker-mapped ports all calling themselves "Data".
 public func projectName(cwd: String?, packageName: String?, homeDir: String) -> String? {
     if let packageName, !packageName.isEmpty { return packageName }
     guard let cwd, !cwd.isEmpty else { return nil }
@@ -95,9 +97,23 @@ public func projectName(cwd: String?, packageName: String?, homeDir: String) -> 
     let uninteresting = ["/", homeDir]
     if uninteresting.contains(cwd) { return nil }
 
-    let tempPrefixes = ["/tmp", "/private/tmp", "/var/folders", "/private/var/folders"]
-    if tempPrefixes.contains(where: { cwd.hasPrefix($0) }) { return nil }
+    let skipDirs = [
+        "/tmp", "/private/tmp", "/var/folders", "/private/var/folders",
+        homeDir + "/Library", "/Library",
+    ]
+    // match whole path components, so `~/Library-notes` isn't taken for `~/Library`
+    if skipDirs.contains(where: { cwd == $0 || cwd.hasPrefix($0 + "/") }) { return nil }
 
     let base = (cwd as NSString).lastPathComponent
     return base.isEmpty ? nil : base
+}
+
+/// The name a row leads with. A directory only gets to name the row when
+/// something confirms the process belongs to it — its own `package.json`, or a
+/// recognised runtime. Otherwise a tool that merely happened to start in that
+/// directory (adb, cloudflared) takes the project's name and says nothing about
+/// itself; the caller falls back to the process name instead.
+public func rowName(cwd: String?, packageName: String?, runtime: String?, homeDir: String) -> String? {
+    guard packageName != nil || runtime != nil else { return nil }
+    return projectName(cwd: cwd, packageName: packageName, homeDir: homeDir)
 }

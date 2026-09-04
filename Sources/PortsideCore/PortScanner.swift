@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// Per-PID enrichment that doesn't change over a process's lifetime, cached so
 /// we don't re-shell on every 2s refresh.
@@ -10,6 +11,10 @@ private struct ProcessInfo_ {
     var runtime: String?
     var projectName: String?
     var startedAt: Date?
+    /// Kernel start time, used only to tell a recycled pid from the original.
+    /// nil for pids libproc won't answer for (root-owned) — those just keep
+    /// their cache entry, which is what the old code did for every pid.
+    var procStart: Date?
 }
 
 /// Runs `lsof`, parses, enriches, and applies the system-daemon filter.
@@ -35,10 +40,20 @@ public actor PortScanner {
             guard let info = cache[listeners[i].pid] else { continue }
             listeners[i].cwd = info.cwd
             listeners[i].command = info.command
-            listeners[i].runtime = info.runtime ?? info.displayName
+            listeners[i].runtime = info.runtime
             listeners[i].projectName = info.projectName
             listeners[i].startedAt = info.startedAt
             if !info.displayName.isEmpty { listeners[i].processName = info.displayName }
+        }
+
+        // one socket read resolves every Docker-published port at once
+        if listeners.contains(where: { $0.runtime == "Docker" }) {
+            let containers = await dockerContainers()
+            for i in listeners.indices where listeners[i].runtime == "Docker" {
+                guard let container = containers[listeners[i].port] else { continue }
+                listeners[i].projectName = container.name
+                listeners[i].detail = container.image
+            }
         }
 
         if !showSystem {
@@ -55,6 +70,10 @@ public actor PortScanner {
     }
 
     private func ensureCached(pids: [Int]) async {
+        // a recycled pid gets a fresh start time — drop the previous tenant's info
+        for pid in pids where cache[pid] != nil && cache[pid]?.procStart != processStartTime(pid) {
+            cache[pid] = nil
+        }
         let missing = pids.filter { cache[$0] == nil }
         guard !missing.isEmpty else { return }
 
@@ -75,14 +94,16 @@ public actor PortScanner {
             let displayName = (execPath as NSString).lastPathComponent
             let cwd = cwds[pid]
             let pkgName = cwd.flatMap { readPackageName(cwd: $0) }
+            let runtime = runtimeLabel(command: command, processName: displayName)
             cache[pid] = ProcessInfo_(
                 cwd: cwd,
                 command: command,
                 execPath: execPath,
                 displayName: displayName,
-                runtime: runtimeLabel(command: command, processName: displayName),
-                projectName: projectName(cwd: cwd, packageName: pkgName, homeDir: homeDir),
-                startedAt: psInfo[pid]?.startedAt
+                runtime: runtime,
+                projectName: rowName(cwd: cwd, packageName: pkgName, runtime: runtime, homeDir: homeDir),
+                startedAt: psInfo[pid]?.startedAt,
+                procStart: processStartTime(pid)
             )
         }
     }
@@ -95,6 +116,16 @@ public actor PortScanner {
 }
 
 // MARK: - ps / lsof field parsing
+
+/// Kernel start time for a pid — no shellout, so it's cheap enough to check
+/// every scan. Returns nil when libproc denies the pid (root-owned processes),
+/// which is why uptime still comes from `ps lstart` instead of this.
+func processStartTime(_ pid: Int) -> Date? {
+    var info = proc_bsdinfo()
+    let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+    guard proc_pidinfo(Int32(pid), PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+    return Date(timeIntervalSince1970: Double(info.pbi_start_tvsec))
+}
 
 private func parsePS(_ out: String) -> [Int: (execPath: String, startedAt: Date?)] {
     var result: [Int: (String, Date?)] = [:]

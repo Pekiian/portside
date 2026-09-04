@@ -142,6 +142,10 @@ struct ListenerRow: View {
                     if let runtime = row.listener?.runtime {
                         RuntimePill(text: runtime)
                     }
+                    if let bind = row.listener?.bind, bind.isWildcard {
+                        LANPill()
+                            .help("Bound to \(bind.host):\(row.port) — reachable from your network, not only this Mac")
+                    }
                 }
                 secondaryLine
             }
@@ -184,10 +188,9 @@ struct ListenerRow: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.orange)
         } else if let l = row.listener {
-            // workspace (cwd tail) distinguishes same-named projects; fall back
-            // to process · pid when there's no cwd. Full detail on hover.
-            let workspace = l.cwd.flatMap { workspaceLabel(cwd: $0) }
-            Text(verbatim: workspace ?? "\(l.processName) · \(l.pid)")
+            // container image, workspace path, or the process name when
+            // nothing else has named the row. Full detail on hover.
+            Text(verbatim: l.subtitle)
                 .font(.system(size: 11))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
@@ -233,6 +236,20 @@ struct ListenerRow: View {
             Button("Kill") { model.kill(row, force: false) }
             Button("Force Kill", role: .destructive) { model.kill(row, force: true) }
         }
+    }
+}
+
+/// Bound to every interface, so the port answers on this Mac's network address
+/// too. Outlined rather than filled so it reads as a note about the row instead
+/// of a second runtime tag.
+struct LANPill: View {
+    var body: some View {
+        Text("LAN")
+            .font(.system(size: 10, weight: .medium))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .overlay(Capsule().strokeBorder(Color.secondary.opacity(0.45), lineWidth: 1))
+            .foregroundStyle(.secondary)
     }
 }
 

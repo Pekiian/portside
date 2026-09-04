@@ -49,6 +49,15 @@ import Foundation
     #expect(projectName(cwd: "/Users/pedro", packageName: nil, homeDir: "/Users/pedro") == nil)
     #expect(projectName(cwd: "/var/folders/xy/tmpabc", packageName: nil, homeDir: "/Users/pedro") == nil)
     #expect(projectName(cwd: nil, packageName: nil, homeDir: "/Users/pedro") == nil)
+    // app-support storage -> nil: every Docker-mapped port sits in the same
+    // container dir and would otherwise render as a row full of "Data"
+    #expect(projectName(cwd: "/Users/pedro/Library/Containers/com.docker.docker/Data",
+                        packageName: nil, homeDir: "/Users/pedro") == nil)
+    #expect(projectName(cwd: "/Library/Application Support/thing",
+                        packageName: nil, homeDir: "/Users/pedro") == nil)
+    // a sibling whose name merely starts with "Library" is a real project
+    #expect(projectName(cwd: "/Users/pedro/Library-notes",
+                        packageName: nil, homeDir: "/Users/pedro") == "Library-notes")
 }
 
 @Test func workspaceLabels() {
@@ -62,4 +71,44 @@ import Foundation
     #expect(workspaceLabel(cwd: "/srv/app") == "/srv/app")
     #expect(workspaceLabel(cwd: "/only") == "/only")
     #expect(workspaceLabel(cwd: "/") == nil)
+}
+
+@Test func rowSubtitleNamesUnidentifiedProcesses() {
+    func listener(_ process: String, project: String?, runtime: String?, cwd: String?,
+                  detail: String? = nil) -> Listener {
+        Listener(port: 1, pid: 42, processName: process, user: "pedro",
+                 bind: BindAddress(raw: "127.0.0.1:1", typeToken: "IPv4")!,
+                 cwd: cwd, projectName: project, runtime: runtime, detail: detail)
+    }
+    let workspace = "/Users/pedro/workspaces/core/san-diego"
+
+    // adb and cloudflared both inherit a project's directory and are both titled
+    // "san-diego" — the second line is the only thing telling them apart
+    #expect(listener("adb", project: "san-diego", runtime: nil, cwd: workspace).subtitle
+            == "adb · …/core/san-diego")
+    #expect(listener("cloudflared", project: "san-diego", runtime: nil, cwd: workspace).subtitle
+            == "cloudflared · …/core/san-diego")
+    // a runtime pill already names the process, so it isn't repeated
+    #expect(listener("node", project: "@repo/backend", runtime: "Node", cwd: "/Users/pedro/w/backend").subtitle
+            == "…/backend")
+    // a container's image outranks everything
+    #expect(listener("com.docker.backend", project: "checkout-postgres", runtime: "Docker",
+                     cwd: "/Users/pedro/Library/Containers/x", detail: "postgres:16-alpine").subtitle
+            == "postgres:16-alpine")
+    // when the title is already the process name, show the pid instead of it twice
+    #expect(listener("lghub_agent", project: nil, runtime: nil, cwd: nil).subtitle == "pid 42")
+}
+
+@Test func directoryOnlyNamesRowsThatBelongToIt() {
+    let home = "/Users/pedro"
+    let workspace = "/Users/pedro/conductor/workspaces/core/san-diego"
+    // adb and cloudflared merely started in this workspace — they must not
+    // inherit its name, or two unrelated rows both read "san-diego"
+    #expect(rowName(cwd: workspace, packageName: nil, runtime: nil, homeDir: home) == nil)
+    // a recognised runtime is evidence the process is that project's server
+    #expect(rowName(cwd: workspace, packageName: nil, runtime: "Node", homeDir: home) == "san-diego")
+    // a package.json name always wins, runtime or not
+    #expect(rowName(cwd: "/Users/pedro/code/blog", packageName: "my-blog", runtime: nil, homeDir: home) == "my-blog")
+    // the throwaway-directory rules still apply on top
+    #expect(rowName(cwd: "/", packageName: nil, runtime: "Node", homeDir: home) == nil)
 }
