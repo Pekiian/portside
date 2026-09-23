@@ -53,8 +53,18 @@ Requires macOS 14+ and the Swift toolchain.
 
 ```sh
 ./build.sh            # runs tests, builds release, assembles dist/Portside.app
-./build.sh --install  # also copies it to /Applications
+./build.sh --install  # also copies it to /Applications, restarting it if it was running
 ```
+
+To update an existing install:
+
+```sh
+git pull && ./build.sh --install
+```
+
+The restart matters: a running app keeps executing from its old bundle even after that bundle is replaced, so without it you'd stay on the previous build with no sign anything had changed.
+
+The build is stamped with `git describe`, and Settings shows it — a tagged commit reads `1.2.0`, anything after one reads `1.2.0-4-gabc1234`, and uncommitted changes add `-dirty`. That's how you tell which build you're running.
 
 `build.sh` needs full **Xcode** to run the unit tests (`swift test` uses the XCTest/Testing runner that Command Line Tools alone don't ship). Without Xcode it prints a warning and still builds the app; install Xcode and run `swift test` to execute the tests.
 

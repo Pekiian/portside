@@ -344,12 +344,24 @@ struct EmptyStateView: View {
 
 struct SettingsPanel: View {
     @EnvironmentObject var prefs: Preferences
+
+    /// CFBundleVersion carries the full `git describe` output; the short string
+    /// is only the numeric part Apple allows.
+    private static var version: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Toggle("Show system processes", isOn: $prefs.showSystem)
             Toggle("Show background apps", isOn: $prefs.showBackgroundApps)
             Toggle("Launch at login", isOn: $prefs.launchAtLogin)
             Toggle("Notify when a pinned port stops", isOn: $prefs.notifyOnStopPinned)
+
+            // the build this came from, so "am I on the latest?" is answerable
+            Text(verbatim: "Portside \(Self.version)")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+                .textSelection(.enabled)
         }
         .toggleStyle(.switch)
         .controlSize(.small)
