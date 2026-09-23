@@ -10,12 +10,16 @@ final class Preferences: ObservableObject {
         static let labels = "customLabels"        // [portString: label]
         static let pins = "pinnedPorts"           // [Int]
         static let showSystem = "showSystemProcesses"
+        static let showBackground = "showBackgroundApps"
         static let launchAtLogin = "launchAtLogin"
         static let notifyPinned = "notifyOnStopPinned"
     }
 
     @Published var showSystem: Bool {
         didSet { defaults.set(showSystem, forKey: Key.showSystem) }
+    }
+    @Published var showBackgroundApps: Bool {
+        didSet { defaults.set(showBackgroundApps, forKey: Key.showBackground) }
     }
     @Published var launchAtLogin: Bool {
         didSet { defaults.set(launchAtLogin, forKey: Key.launchAtLogin) }
@@ -28,6 +32,8 @@ final class Preferences: ObservableObject {
 
     init() {
         showSystem = defaults.bool(forKey: Key.showSystem)
+        // shown by default: grouping already keeps them out of the way
+        showBackgroundApps = defaults.object(forKey: Key.showBackground) as? Bool ?? true
         launchAtLogin = defaults.bool(forKey: Key.launchAtLogin)
         notifyOnStopPinned = defaults.bool(forKey: Key.notifyPinned)
 

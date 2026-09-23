@@ -23,6 +23,10 @@ struct MenuContentView: View {
                 ScrollView {
                     LazyVStack(spacing: 0) {
                         ForEach(model.rows) { row in
+                            // the first background app opens the section below your own ports
+                            if row.isBackgroundApp, row.id == model.firstBackgroundRowID {
+                                SectionHeading(text: "Background apps")
+                            }
                             ListenerRow(
                                 row: row,
                                 isEditing: editingPort == row.port,
@@ -128,6 +132,11 @@ struct ListenerRow: View {
                             .onSubmit(onCommit)
                             .onExitCommand(perform: onCancel)      // Esc cancels
                             .onAppear { fieldFocused = true }
+                            // clicking away ends the rename, as it does in Finder —
+                            // without this the row stays in edit mode for good
+                            .onChange(of: fieldFocused) { _, focused in
+                                if !focused { onCommit() }
+                            }
                     } else {
                         Text(row.title)
                             .font(.system(size: 13))
@@ -222,9 +231,16 @@ struct ListenerRow: View {
         if row.isListening {
             Button("Open in Browser") { model.open(row) }
             Button("Copy URL") { model.copyURL(row) }
-            if row.listener?.cwd != nil {
+            if let cwd = row.listener?.cwd {
                 Button("Open cwd in Terminal") { model.openTerminal(row) }
                 Button("Reveal cwd in Finder") { model.revealInFinder(row) }
+                if !Editors.installed.isEmpty {
+                    Menu("Open cwd in") {
+                        ForEach(Editors.installed) { editor in
+                            Button(editor.name) { Editors.open(cwd, in: editor) }
+                        }
+                    }
+                }
             }
         }
         Button(model.prefs.isPinned(row.port) ? "Unpin" : "Pin") {
@@ -242,6 +258,20 @@ struct ListenerRow: View {
 /// Bound to every interface, so the port answers on this Mac's network address
 /// too. Outlined rather than filled so it reads as a note about the row instead
 /// of a second runtime tag.
+/// Divides the user's own ports from everything else in the list.
+struct SectionHeading: View {
+    let text: String
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.tertiary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 4)
+    }
+}
+
 struct LANPill: View {
     var body: some View {
         Text("LAN")
@@ -255,13 +285,43 @@ struct LANPill: View {
 
 struct RuntimePill: View {
     let text: String
+
     var body: some View {
         Text(text)
             .font(.system(size: 10, weight: .medium))
             .padding(.horizontal, 6)
             .padding(.vertical, 1)
-            .background(Color.secondary.opacity(0.15), in: Capsule())
-            .foregroundStyle(.secondary)
+            .background(Self.tint(for: text), in: Capsule())
+            // the label carries the meaning; colour only speeds recognition, so
+            // the text stays at full contrast in both appearances
+            .foregroundStyle(.primary)
+    }
+
+    /// Brand colour per runtime, as a wash behind the label. Brands that are
+    /// black-and-white (Next, Deno, Remix, Flask) get the neutral fill — a
+    /// literal black pill vanishes in dark mode. Webpack and Postgres use
+    /// adjusted tones: their own blues are too pale on light and too dark on
+    /// dark respectively.
+    private static func tint(for runtime: String) -> Color {
+        guard let hex = brand[runtime] else { return Color.secondary.opacity(0.15) }
+        return Color(hex: hex).opacity(0.45)
+    }
+
+    private static let brand: [String: UInt32] = [
+        "Docker": 0x2496ED, "Node": 0x5FA04E, "Nuxt": 0x00DC82, "Vite": 0x646CFF,
+        "Astro": 0xFF5D01, "Webpack": 0x2D7CB8, "Python": 0x4B8BBE, "Django": 0x44B78B,
+        "Rails": 0xCC0000, "uvicorn": 0x2094F3, "gunicorn": 0x499848, "Postgres": 0x6699CC,
+        "Redis": 0xFF4438, "MySQL": 0xF29111, "Mongo": 0x47A248, "Elasticsearch": 0xFEC514,
+        "Go": 0x00ADD8, "Bun": 0xE3B261,
+    ]
+}
+
+extension Color {
+    init(hex: UInt32) {
+        self.init(.sRGB,
+                  red: Double((hex >> 16) & 0xFF) / 255,
+                  green: Double((hex >> 8) & 0xFF) / 255,
+                  blue: Double(hex & 0xFF) / 255)
     }
 }
 
@@ -287,6 +347,7 @@ struct SettingsPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Toggle("Show system processes", isOn: $prefs.showSystem)
+            Toggle("Show background apps", isOn: $prefs.showBackgroundApps)
             Toggle("Launch at login", isOn: $prefs.launchAtLogin)
             Toggle("Notify when a pinned port stops", isOn: $prefs.notifyOnStopPinned)
         }

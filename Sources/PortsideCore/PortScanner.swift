@@ -9,7 +9,7 @@ private struct ProcessInfo_ {
     var execPath: String
     var displayName: String
     var runtime: String?
-    var projectName: String?
+    var packageName: String?
     var startedAt: Date?
     /// Kernel start time, used only to tell a recycled pid from the original.
     /// nil for pids libproc won't answer for (root-owned) — those just keep
@@ -36,24 +36,46 @@ public actor PortScanner {
         evictStalePIDs(alive: Set(pids))
         await ensureCached(pids: pids)
 
+        // one socket read resolves every Docker-published port at once. The
+        // runtime comes from the cache: listeners aren't enriched until below.
+        let anyDocker = pids.contains { cache[$0]?.runtime == "Docker" }
+        let containers = anyDocker ? await dockerContainers() : [:]
+
+        // only pay for the lookup when something actually runs from a workspace —
+        // for a container that's the stack's directory, not the host process's
+        let workspaceRoot = "/conductor/workspaces/"
+        let anyWorkspace = pids.contains { cache[$0]?.cwd?.contains(workspaceRoot) == true }
+            || containers.values.contains { $0.workingDir?.contains(workspaceRoot) == true }
+        workspaceNames = anyWorkspace ? await conductorWorkspaceNames() : [:]
+
         for i in listeners.indices {
             guard let info = cache[listeners[i].pid] else { continue }
             listeners[i].cwd = info.cwd
             listeners[i].command = info.command
             listeners[i].runtime = info.runtime
-            listeners[i].projectName = info.projectName
+            listeners[i].packageName = info.packageName
+            // recomputed per scan: a workspace rename must show up without a restart
+            listeners[i].projectName = rowName(cwd: info.cwd, packageName: info.packageName,
+                                               runtime: info.runtime, homeDir: homeDir,
+                                               workspaceNames: workspaceNames)
             listeners[i].startedAt = info.startedAt
             if !info.displayName.isEmpty { listeners[i].processName = info.displayName }
         }
 
-        // one socket read resolves every Docker-published port at once
-        if listeners.contains(where: { $0.runtime == "Docker" }) {
-            let containers = await dockerContainers()
-            for i in listeners.indices where listeners[i].runtime == "Docker" {
-                guard let container = containers[listeners[i].port] else { continue }
-                listeners[i].projectName = container.name
-                listeners[i].detail = container.image
-            }
+        for i in listeners.indices where listeners[i].runtime == "Docker" {
+            guard let container = containers[listeners[i].port] else { continue }
+            listeners[i].projectName = dockerRowName(container, workspaceNames: workspaceNames)
+            listeners[i].detail = container.image
+            // Terminal, Finder and the editors should land on the compose stack.
+            // Without one there is nowhere useful to go, so drop the Docker
+            // helper's own storage rather than offer to open it.
+            listeners[i].cwd = containerDirectory(container)
+        }
+
+        for i in listeners.indices {
+            listeners[i].isBackgroundApp = isBackgroundApp(cwd: listeners[i].cwd,
+                                                           hasContainer: listeners[i].detail != nil,
+                                                           homeDir: homeDir)
         }
 
         if !showSystem {
@@ -68,6 +90,10 @@ public actor PortScanner {
     private func evictStalePIDs(alive: Set<Int>) {
         for pid in cache.keys where !alive.contains(pid) { cache[pid] = nil }
     }
+
+    /// Conductor's display names, refreshed once per scan: renaming a workspace
+    /// changes nothing on disk, so a cached name would never catch up.
+    private var workspaceNames: [String: String] = [:]
 
     private func ensureCached(pids: [Int]) async {
         // a recycled pid gets a fresh start time — drop the previous tenant's info
@@ -101,7 +127,7 @@ public actor PortScanner {
                 execPath: execPath,
                 displayName: displayName,
                 runtime: runtime,
-                projectName: rowName(cwd: cwd, packageName: pkgName, runtime: runtime, homeDir: homeDir),
+                packageName: pkgName,
                 startedAt: psInfo[pid]?.startedAt,
                 procStart: processStartTime(pid)
             )

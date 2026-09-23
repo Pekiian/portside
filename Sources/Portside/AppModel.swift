@@ -17,6 +17,8 @@ struct PortRow: Identifiable, Equatable {
 
     var id: Int { port }
     var isListening: Bool { listener != nil }
+    /// Not something the user is working on — sorted below their own ports.
+    var isBackgroundApp: Bool { listener?.isBackgroundApp ?? false }
     var url: URL? { URL(string: "http://localhost:\(port)") }
 
     /// Primary name: custom label > project > process, or "(down)" placeholder.
@@ -29,6 +31,9 @@ struct PortRow: Identifiable, Equatable {
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var rows: [PortRow] = []
+
+    /// Where the "Background apps" heading goes, or nil when there are none.
+    var firstBackgroundRowID: Int? { rows.first { $0.isBackgroundApp }?.id }
     @Published var isMenuOpen = false { didSet { restartPolling() } }
 
     let prefs = Preferences()
@@ -52,6 +57,7 @@ final class AppModel: ObservableObject {
         prefs.$labels.dropFirst().sink { [weak self] _ in self?.refreshNow() }.store(in: &cancellables)
         prefs.$pinnedPorts.dropFirst().sink { [weak self] _ in self?.refreshNow() }.store(in: &cancellables)
         prefs.$showSystem.dropFirst().sink { [weak self] _ in self?.refreshNow() }.store(in: &cancellables)
+        prefs.$showBackgroundApps.dropFirst().sink { [weak self] _ in self?.refreshNow() }.store(in: &cancellables)
 
         restartPolling()
     }
@@ -106,9 +112,11 @@ final class AppModel: ObservableObject {
                 statusMessage: statusByPort[port]
             ))
         }
-        // pinned first, then by port asc
+        if !prefs.showBackgroundApps { rows.removeAll { $0.isBackgroundApp && !$0.pinned } }
+        // your own ports first, pinned above those, background apps last
         return rows.sorted {
             if $0.pinned != $1.pinned { return $0.pinned && !$1.pinned }
+            if $0.isBackgroundApp != $1.isBackgroundApp { return !$0.isBackgroundApp }
             return $0.port < $1.port
         }
     }
@@ -139,7 +147,7 @@ final class AppModel: ObservableObject {
         guard let url = row.url else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(url.absoluteString, forType: .string)
-        flash(row.port, "Copied")
+        flash(row.port, "Copied", clearAfter: 1.5)
     }
 
     func openTerminal(_ row: PortRow) {

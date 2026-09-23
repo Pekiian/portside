@@ -2,7 +2,7 @@
 
 A native macOS menu bar app that shows what's listening on **localhost** and lets you act on it. Nothing else — it is not a general network tool.
 
-Each row is something you can open at `http://localhost:PORT`. Click to open it in your browser, ⌘-click to copy the URL, right-click for more (open cwd in Terminal, reveal in Finder, kill). Dev servers are tagged (Vite, Next, Postgres, …), pinned ports stay at the top even when they're down, and you can rename a port to something memorable.
+Each row is something you can open at `http://localhost:PORT`. Click to open it in your browser, ⌘-click to copy the URL, right-click for more (open the working directory in Terminal, Finder, or any installed editor — VS Code, Cursor, Zed, Windsurf, Sublime, a JetBrains IDE — plus pin, rename and kill). For a container that directory is the compose stack it belongs to, not Docker's internal storage. Dev servers are tagged (Vite, Next, Postgres, …), pinned ports stay at the top even when they're down, and you can rename a port to something memorable.
 
 Docker-published ports are named by their container. Docker Desktop serves every published port from one host process, so `lsof` and `ps` see ten identical rows; Portside asks Docker's local socket which container is behind each port and shows that instead, with the image on the second line.
 
@@ -12,16 +12,28 @@ Docker-published ports are named by their container. Docker Desktop serves every
 
 1. a label you set yourself,
 2. the container name, for a Docker-published port,
-3. the `name` from the `package.json` in the process's working directory,
+3. the checkout it runs from,
 4. the process name.
 
-A directory only names a row when something confirms the process belongs to it — that `package.json`, or a recognised runtime. Otherwise a tool that merely started in a checkout would take the project's name: `adb`, auto-started by an Android command inside `~/work/san-diego`, reads as `adb`, not as `san-diego`.
+The checkout beats the `package.json` name on purpose. Thirty parallel worktrees of one repo all call themselves the same thing in `package.json`, so that name is the one field that *cannot* tell them apart — `san-diego` can. Inside a monorepo the enclosing checkout comes too, since `apps/storefront` is called `storefront` in every copy: `san-diego/storefront`.
 
-**The second line** is the container image, the working directory, or the process name when nothing else has identified the row. It doesn't repeat what the first line already says; a row with no directory shows `pid 913` instead.
+If you use [Conductor](https://conductor.build), a renamed workspace shows the name you gave it. Conductor keeps that name in its own database and never renames the directory, so the folder stays `warsaw` for a workspace you call Marketing. Portside reads the mapping read-only and falls back to the directory name when Conductor isn't installed. Because a rename touches nothing on disk, the name is recomputed on every scan rather than cached — rename a workspace and the row follows on the next refresh.
 
-**The tags** are the runtime (Vite, Next, Django, Postgres, Docker, …) when one is recognised, and `LAN` when the port is bound to every interface (`*` / `0.0.0.0` / `::`) rather than to loopback.
+Container rows are named the same way. `chennai-postgres-1` is compose's own construction — stack directory, service, replica index — so Portside reads the compose labels instead and shows `GMaps link/postgres`: the workspace the stack lives in, and the service within it. Containers started outside compose keep their own name.
+
+A directory only names a row when something confirms the process belongs to it — a `package.json`, or a recognised runtime. Otherwise a tool that merely started in a checkout would take its name: `adb`, auto-started by an Android command inside `~/work/san-diego`, reads as `adb`, not as `san-diego`.
+
+**The second line** is the container image, the `package.json` name, the working directory, or the process name — whichever is the first thing the title didn't already say. A row with nothing left to add shows `pid 913`.
+
+**The tags** are the runtime (Vite, Next, Django, Postgres, Docker, …) when one is recognised, tinted with that project's brand colour, and `LAN` when the port is bound to every interface (`*` / `0.0.0.0` / `::`) rather than to loopback. Colour is a wash behind the label rather than the text itself, so the tag stays readable in both light and dark; the word always carries the meaning.
 
 A `LAN` port answers on this Mac's network address, so other machines on the network can reach it — Docker publishes to `0.0.0.0` by default, so container ports normally carry the tag. Publish as `127.0.0.1:5433:5432` to keep one private. Portside only reports what `lsof` already knows; it never probes anything.
+
+## Your ports, then everything else
+
+Ports you're working on sort first. Spotify, a helper daemon and an updater sort below a **Background apps** heading, and **Show background apps** in Settings hides them entirely.
+
+The split needs no list of app names: a GUI app is launched by Finder or launchd and inherits `/` as its working directory, while a dev server is started from a checkout and inherits that. So a row is yours when it runs from a real directory, or when a container stands behind it. Whatever you install next month is classified correctly without Portside knowing it exists.
 
 ## Localhost only — by design
 
@@ -54,10 +66,10 @@ If `assets/AppIcon.png` exists, the build generates `AppIcon.icns` and wires it 
 
 ## Privacy
 
-Everything is local. Portside runs `lsof` and `ps` on your machine to read listeners and enrich them, and — when a Docker-published port is listening — reads the container list from Docker's unix socket at `~/.docker/run/docker.sock` (or `/var/run/docker.sock`). It does nothing else: no sandbox exception is needed because it makes **no network calls of any kind** and sends nothing anywhere. The Docker read is a local socket, never the network, and is skipped entirely when no Docker-owned port is listening.
+Everything is local. Portside runs `lsof` and `ps` on your machine to read listeners and enrich them; when a Docker-published port is listening it reads the container list from Docker's unix socket at `~/.docker/run/docker.sock` (or `/var/run/docker.sock`); and when something is running from a Conductor workspace it reads workspace names from Conductor's own SQLite file, opened read-only. It does nothing else: no sandbox exception is needed because it makes **no network calls of any kind** and sends nothing anywhere. The Docker read is a local socket, never the network, and is skipped entirely when no Docker-owned port is listening.
 
 ## Layout
 
-- `Sources/PortsideCore` — pure, unit-tested logic: the `lsof` parser, localhost filter, runtime/label detection, daemon filter, Docker port mapping, kill logic.
+- `Sources/PortsideCore` — pure, unit-tested logic: the `lsof` parser, localhost filter, runtime/label detection, row naming, daemon filter, Docker port mapping, Conductor workspace names, kill logic.
 - `Sources/Portside` — the SwiftUI `MenuBarExtra` app.
 - `Tests/PortsideCoreTests` — parser, filter, enrichment, Docker mapping, and uptime tests.

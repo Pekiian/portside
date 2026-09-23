@@ -90,7 +90,7 @@ import Foundation
             == "cloudflared · …/core/san-diego")
     // a runtime pill already names the process, so it isn't repeated
     #expect(listener("node", project: "@repo/backend", runtime: "Node", cwd: "/Users/pedro/w/backend").subtitle
-            == "…/backend")
+            == "…/w/backend")
     // a container's image outranks everything
     #expect(listener("com.docker.backend", project: "checkout-postgres", runtime: "Docker",
                      cwd: "/Users/pedro/Library/Containers/x", detail: "postgres:16-alpine").subtitle
@@ -107,8 +107,64 @@ import Foundation
     #expect(rowName(cwd: workspace, packageName: nil, runtime: nil, homeDir: home) == nil)
     // a recognised runtime is evidence the process is that project's server
     #expect(rowName(cwd: workspace, packageName: nil, runtime: "Node", homeDir: home) == "san-diego")
-    // a package.json name always wins, runtime or not
-    #expect(rowName(cwd: "/Users/pedro/code/blog", packageName: "my-blog", runtime: nil, homeDir: home) == "my-blog")
+    // the checkout leads even when package.json names the project differently —
+    // thirty worktrees of one repo all say "my-blog", only the directory differs
+    #expect(rowName(cwd: "/Users/pedro/code/blog", packageName: "my-blog", runtime: nil, homeDir: home) == "blog")
+    // with no usable directory, the package name is all there is
+    #expect(rowName(cwd: "/tmp/scratch", packageName: "my-blog", runtime: nil, homeDir: home) == "my-blog")
     // the throwaway-directory rules still apply on top
     #expect(rowName(cwd: "/", packageName: nil, runtime: "Node", homeDir: home) == nil)
+}
+
+@Test func checkoutNamesDistinguishParallelWorktrees() {
+    let core = "/Users/pedro/conductor/workspaces/core"
+    // the workspace segment is the only thing that differs between 37 checkouts
+    #expect(checkoutName(cwd: core + "/san-diego") == "san-diego")
+    #expect(checkoutName(cwd: core + "/damascus") == "damascus")
+    // inside a monorepo, "storefront" alone is identical in all of them
+    #expect(checkoutName(cwd: core + "/san-diego/apps/storefront") == "san-diego/storefront")
+    #expect(checkoutName(cwd: core + "/damascus/packages/api") == "damascus/api")
+    // ordinary projects keep their own name
+    #expect(checkoutName(cwd: "/Users/pedro/code/blog") == "blog")
+    // a structural dir is never the whole name
+    #expect(checkoutName(cwd: "/Users/pedro/proj/src") == "proj")
+    #expect(checkoutName(cwd: "/srv") == "srv")
+    #expect(checkoutName(cwd: "/") == nil)
+}
+
+@Test func renamedConductorWorkspacesUseTheirDisplayName() {
+    // Conductor renames a workspace in its own database and never touches the
+    // directory, so the folder stays `warsaw` for a workspace called "Marketing"
+    let rows = "/Users/pedro/conductor/workspaces/core/warsaw\tMarketing\n"
+             + "/Users/pedro/conductor/workspaces/Black Pearl Ventures/davis\tPearl Work\n"
+             + "malformed-line-with-no-tab\n"
+    let names = parseConductorWorkspaces(rows)
+    #expect(names.count == 2)
+    // paths and names both contain spaces, so only the first tab splits
+    #expect(names["/Users/pedro/conductor/workspaces/Black Pearl Ventures/davis"] == "Pearl Work")
+
+    #expect(checkoutName(cwd: "/Users/pedro/conductor/workspaces/core/warsaw", workspaceNames: names) == "Marketing")
+    #expect(checkoutName(cwd: "/Users/pedro/conductor/workspaces/core/warsaw/apps/storefront",
+                         workspaceNames: names) == "Marketing/storefront")
+    // never renamed, or no Conductor at all: the directory name stands
+    #expect(checkoutName(cwd: "/Users/pedro/conductor/workspaces/Personal/quito", workspaceNames: names) == "quito")
+    #expect(checkoutName(cwd: "/Users/pedro/code/blog", workspaceNames: [:]) == "blog")
+    // a sibling that merely shares a prefix is not inside the workspace
+    #expect(checkoutName(cwd: "/Users/pedro/conductor/workspaces/core/warsaw-old",
+                         workspaceNames: names) == "warsaw-old")
+}
+
+@Test func backgroundAppsHaveNoWorkingDirectory() {
+    let home = "/Users/pedro"
+    // Finder and launchd hand a GUI app `/`; a dev server inherits its checkout
+    #expect(isBackgroundApp(cwd: "/", hasContainer: false, homeDir: home))
+    #expect(isBackgroundApp(cwd: nil, hasContainer: false, homeDir: home))
+    #expect(isBackgroundApp(cwd: home, hasContainer: false, homeDir: home))
+    #expect(!isBackgroundApp(cwd: home + "/conductor/workspaces/core/warsaw",
+                             hasContainer: false, homeDir: home))
+    // Docker's helper has no useful cwd, but a container port is the user's work
+    #expect(!isBackgroundApp(cwd: home + "/Library/Containers/com.docker.docker/Data",
+                             hasContainer: true, homeDir: home))
+    #expect(isBackgroundApp(cwd: home + "/Library/Containers/com.docker.docker/Data",
+                            hasContainer: false, homeDir: home))
 }

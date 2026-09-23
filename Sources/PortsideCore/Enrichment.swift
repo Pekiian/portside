@@ -33,6 +33,7 @@ public func runtimeLabel(command: String, processName: String) -> String? {
         (["com.docker", "docker-proxy", "vpnkit", "orbstack", "orb "], "Docker"),
         (["go run", "__debug_bin"], "Go"),
         (["node"], "Node"),
+        (["python"], "Python"),
     ]
 
     for rule in rules where rule.needles.contains(where: { c.contains($0) }) {
@@ -86,34 +87,80 @@ public func workspaceLabel(cwd: String, maxComponents: Int = 2) -> String? {
     return prefix + tail.joined(separator: "/")
 }
 
-/// Project name: package.json `name` > cwd basename > nil.
-/// The basename is dropped when cwd is a throwaway location (root, home, temp)
-/// or app-support storage — `~/Library/Containers/com.docker.docker/Data` is
-/// nine Docker-mapped ports all calling themselves "Data".
-public func projectName(cwd: String?, packageName: String?, homeDir: String) -> String? {
-    if let packageName, !packageName.isEmpty { return packageName }
-    guard let cwd, !cwd.isEmpty else { return nil }
-
-    let uninteresting = ["/", homeDir]
-    if uninteresting.contains(cwd) { return nil }
-
+/// Directories that never name a row: root, home, temp, and app-support
+/// storage — `~/Library/Containers/com.docker.docker/Data` is nine
+/// Docker-mapped ports all calling themselves "Data".
+private func isThrowawayDir(_ cwd: String, homeDir: String) -> Bool {
+    if cwd.isEmpty || cwd == "/" || cwd == homeDir { return true }
     let skipDirs = [
         "/tmp", "/private/tmp", "/var/folders", "/private/var/folders",
         homeDir + "/Library", "/Library",
     ]
     // match whole path components, so `~/Library-notes` isn't taken for `~/Library`
-    if skipDirs.contains(where: { cwd == $0 || cwd.hasPrefix($0 + "/") }) { return nil }
+    return skipDirs.contains { cwd == $0 || cwd.hasPrefix($0 + "/") }
+}
+
+/// Project name: package.json `name` > cwd basename > nil.
+public func projectName(cwd: String?, packageName: String?, homeDir: String) -> String? {
+    if let packageName, !packageName.isEmpty { return packageName }
+    guard let cwd, !isThrowawayDir(cwd, homeDir: homeDir) else { return nil }
 
     let base = (cwd as NSString).lastPathComponent
     return base.isEmpty ? nil : base
 }
 
-/// The name a row leads with. A directory only gets to name the row when
-/// something confirms the process belongs to it — its own `package.json`, or a
-/// recognised runtime. Otherwise a tool that merely happened to start in that
-/// directory (adb, cloudflared) takes the project's name and says nothing about
-/// itself; the caller falls back to the process name instead.
-public func rowName(cwd: String?, packageName: String?, runtime: String?, homeDir: String) -> String? {
+/// The checkout a process runs from: the directory name, and the enclosing
+/// checkout too when that name sits inside a monorepo subdir — `apps/storefront`
+/// is called `storefront` in every copy of the repo, `san-diego/storefront`
+/// says which copy.
+public func checkoutName(cwd: String, workspaceNames: [String: String] = [:]) -> String? {
+    let noise: Set<String> = ["workspaces", "apps", "packages", "src"]
+
+    // a renamed Conductor workspace: the folder is `warsaw`, the user calls it
+    // "Marketing", and only Conductor's database knows that
+    if let workspace = conductorWorkspace(for: cwd, names: workspaceNames) {
+        guard let leaf = workspace.rest.last, !noise.contains(leaf) else { return workspace.name }
+        return "\(workspace.name)/\(leaf)"
+    }
+
+    let all = cwd.split(separator: "/").map(String.init)
+    guard let leaf = all.last else { return nil }
+
+    let parents = all.dropLast()
+    guard let parent = parents.last else { return leaf }
+    if !noise.contains(parent) && !noise.contains(leaf) { return leaf }
+
+    guard let enclosing = parents.last(where: { !noise.contains($0) }) else { return leaf }
+    return noise.contains(leaf) ? enclosing : "\(enclosing)/\(leaf)"
+}
+
+/// The name a row leads with.
+///
+/// A directory only gets to name the row when something confirms the process
+/// belongs to it — its own `package.json`, or a recognised runtime. Otherwise a
+/// tool that merely happened to start in that directory (adb, cloudflared)
+/// takes the project's name and says nothing about itself; the caller falls
+/// back to the process name instead.
+///
+/// Given that evidence, the checkout wins over the `package.json` name: thirty
+/// parallel worktrees of one repo share a package name, so it is the one thing
+/// that cannot tell them apart. The package name moves to the second line.
+public func rowName(cwd: String?, packageName: String?, runtime: String?, homeDir: String,
+                    workspaceNames: [String: String] = [:]) -> String? {
     guard packageName != nil || runtime != nil else { return nil }
-    return projectName(cwd: cwd, packageName: packageName, homeDir: homeDir)
+    if let cwd, !isThrowawayDir(cwd, homeDir: homeDir),
+       let checkout = checkoutName(cwd: cwd, workspaceNames: workspaceNames) {
+        return checkout
+    }
+    return packageName
+}
+
+/// A row is the user's own work when it runs from a real directory, or when a
+/// container stands behind it. Background apps — Spotify, a helper daemon, an
+/// updater — are launched by Finder or launchd and inherit `/`, so they have no
+/// working directory to show.
+public func isBackgroundApp(cwd: String?, hasContainer: Bool, homeDir: String) -> Bool {
+    if hasContainer { return false }
+    guard let cwd, !isThrowawayDir(cwd, homeDir: homeDir) else { return true }
+    return false
 }

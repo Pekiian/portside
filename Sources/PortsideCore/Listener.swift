@@ -73,11 +73,17 @@ public struct Listener: Identifiable, Equatable {
     public var cwd: String?
     public var projectName: String?
     public var runtime: String?
+    /// What the project calls itself in `package.json`. The title is the
+    /// checkout, so this is the second line's job.
+    public var packageName: String?
     public var command: String?
     public var startedAt: Date?
     /// Secondary line override — the container image for Docker-published
     /// ports, where the cwd is Docker's own storage and says nothing.
     public var detail: String?
+    /// Launched by Finder or launchd rather than started from a checkout, so it
+    /// has no working directory: Spotify, helper daemons, updaters.
+    public var isBackgroundApp: Bool = false
 
     // user prefs
     public var customLabel: String?
@@ -94,6 +100,7 @@ public struct Listener: Identifiable, Equatable {
         cwd: String? = nil,
         projectName: String? = nil,
         runtime: String? = nil,
+        packageName: String? = nil,
         command: String? = nil,
         startedAt: Date? = nil,
         detail: String? = nil,
@@ -108,6 +115,7 @@ public struct Listener: Identifiable, Equatable {
         self.cwd = cwd
         self.projectName = projectName
         self.runtime = runtime
+        self.packageName = packageName
         self.command = command
         self.startedAt = startedAt
         self.detail = detail
@@ -128,6 +136,10 @@ public struct Listener: Identifiable, Equatable {
     /// name isn't repeated here.
     public var subtitle: String {
         if let detail { return detail }
+        // the title is the checkout, so the package name is the new information —
+        // unless the title already ends with it ("Marketing/storefront")
+        if let packageName, packageName != displayName,
+           !displayName.hasSuffix("/" + packageName) { return packageName }
         let place = cwd.flatMap { workspaceLabel(cwd: $0) }
         let unnamed = runtime == nil && displayName != processName
         let parts = [unnamed ? processName : nil, place].compactMap { $0 }
