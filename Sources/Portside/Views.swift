@@ -93,7 +93,7 @@ struct MenuContentView: View {
             return !(row.isBackgroundApp && prefs.backgroundCollapsed)
         }.count
         let headings = prefs.sections.count + (backgroundRows.isEmpty ? 0 : 1)
-        return CGFloat(visibleRows) * 48 + CGFloat(headings) * 30
+        return CGFloat(visibleRows) * 48 + CGFloat(headings) * 34
     }
 
     @ViewBuilder private func rowList(_ rows: [PortRow]) -> some View {
@@ -399,7 +399,7 @@ struct UserSectionHeader: View {
         .foregroundStyle(.tertiary)
         .padding(.horizontal, 12)
         .padding(.top, 10)
-        .padding(.bottom, 4)
+        .padding(.bottom, 8)
         .contentShape(Rectangle())
         .background(targeted ? Color.accentColor.opacity(0.15) : .clear)
         .onTapGesture {
@@ -432,7 +432,7 @@ struct SectionHeading: View {
         .foregroundStyle(.tertiary)
         .padding(.horizontal, 12)
         .padding(.top, 10)
-        .padding(.bottom, 4)
+        .padding(.bottom, 8)
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
     }
