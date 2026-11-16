@@ -151,6 +151,7 @@ struct MenuContentView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(showSettings ? Color.accentColor : .secondary)
+            .pointingHand()
             Spacer()
             Button {
                 NSApp.terminate(nil)
@@ -159,6 +160,7 @@ struct MenuContentView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.secondary)
+            .pointingHand()
         }
         .padding(.horizontal, 12)
         .padding(.top, 8)
@@ -246,6 +248,7 @@ struct ListenerRow: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.red)
                 .help("Kill (SIGTERM, then SIGKILL after 3s)")
+                .pointingHand()
 
                 Button { model.copyURL(row) } label: {
                     Image(systemName: "doc.on.doc").font(.system(size: 11))
@@ -253,6 +256,7 @@ struct ListenerRow: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .help("Copy http://localhost:\(row.port)")
+                .pointingHand()
             } else if let uptime = uptimeText {
                 Text(uptime)
                     .font(.system(size: 11, design: .monospaced))
@@ -332,9 +336,9 @@ struct ListenerRow: View {
             }
             if !prefs.sections.isEmpty { Divider() }
             Button("New Section…", action: onNewSection)
-            if row.section != nil {
-                Button("Back to Main List") { prefs.setSection(nil, for: row.port) }
-            }
+        }
+        if let section = row.section {
+            Button("Remove from \(section)") { prefs.setSection(nil, for: row.port) }
         }
         if row.isListening {
             Divider()
@@ -405,6 +409,7 @@ struct UserSectionHeader: View {
         .onTapGesture {
             if !isEditing { withAnimation(.fold) { prefs.toggleCollapsed(name) } }
         }
+        .pointingHand()
         .contextMenu {
             Button("Rename", action: onBeginRename)
             Button("Delete Section", role: .destructive) { prefs.deleteSection(name) }
@@ -435,6 +440,7 @@ struct SectionHeading: View {
         .padding(.bottom, 8)
         .contentShape(Rectangle())
         .onTapGesture(perform: onToggle)
+        .pointingHand()
     }
 }
 
@@ -444,6 +450,20 @@ struct FoldChevron: View {
         Image(systemName: "chevron.right")
             .font(.system(size: 9, weight: .bold))
             .rotationEffect(.degrees(collapsed ? 0 : 90))
+    }
+}
+
+extension View {
+    /// Hand cursor over something clickable. macOS 15 has it built in; on 14,
+    /// push/pop by hover.
+    @ViewBuilder func pointingHand() -> some View {
+        if #available(macOS 15, *) {
+            pointerStyle(.link)
+        } else {
+            onHover { inside in
+                if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
+        }
     }
 }
 
@@ -535,10 +555,10 @@ struct SettingsPanel: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Toggle("Show system processes", isOn: $prefs.showSystem)
-            Toggle("Show background apps", isOn: $prefs.showBackgroundApps)
-            Toggle("Launch at login", isOn: $prefs.launchAtLogin)
-            Toggle("Notify when a pinned port stops", isOn: $prefs.notifyOnStopPinned)
+            Toggle("Show system processes", isOn: $prefs.showSystem).pointingHand()
+            Toggle("Show background apps", isOn: $prefs.showBackgroundApps).pointingHand()
+            Toggle("Launch at login", isOn: $prefs.launchAtLogin).pointingHand()
+            Toggle("Notify when a pinned port stops", isOn: $prefs.notifyOnStopPinned).pointingHand()
 
             // the build this came from, so "am I on the latest?" is answerable
             Text(verbatim: "Portside \(Self.version)")

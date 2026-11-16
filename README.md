@@ -37,7 +37,7 @@ The split needs no list of app names: a GUI app is launched by Finder or launchd
 
 ## Your own sections
 
-Some of what listens on localhost isn't a project you're working on — an assistant you run every day, a gateway that has to stay up. Right-click a row → **Move to Section → New Section…** to file it under a heading of your own, or drag the row onto an existing heading. Sections sit between your ports and background apps; drag a heading onto another to reorder them, click it to fold it, right-click to rename or delete it. Drag a row onto the **Localhost** heading to bring it back.
+Some of what listens on localhost isn't a project you're working on — an assistant you run every day, a gateway that has to stay up. Right-click a row → **Move to Section → New Section…** to file it under a heading of your own, or drag the row onto an existing heading. Sections sit between your ports and background apps; drag a heading onto another to reorder them, click it to fold it, right-click to rename or delete it. Right-click → **Remove from <section>** or drag the row onto the **Localhost** heading to bring it back.
 
 Ports in a section stay visible when they stop, like pins, so you notice when the thing you set aside is down. They don't count toward the menu bar number: that's for what you're working on.
 
