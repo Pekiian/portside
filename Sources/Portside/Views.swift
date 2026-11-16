@@ -93,7 +93,7 @@ struct MenuContentView: View {
             return !(row.isBackgroundApp && prefs.backgroundCollapsed)
         }.count
         let headings = prefs.sections.count + (backgroundRows.isEmpty ? 0 : 1)
-        return CGFloat(visibleRows) * 46 + CGFloat(headings) * 28
+        return CGFloat(visibleRows) * 48 + CGFloat(headings) * 30
     }
 
     @ViewBuilder private func rowList(_ rows: [PortRow]) -> some View {
@@ -272,20 +272,20 @@ struct ListenerRow: View {
     @ViewBuilder private var secondaryLine: some View {
         if let message = row.statusMessage {
             Text(message)
-                .font(.system(size: 11))
+                .font(.system(size: 12))
                 .foregroundStyle(.orange)
         } else if let l = row.listener {
             // container image, workspace path, or the process name when
             // nothing else has named the row. Full detail on hover.
             Text(verbatim: l.subtitle)
-                .font(.system(size: 11))
+                .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
                 .truncationMode(.head)
                 .help("\(l.cwd ?? "")\n\(l.processName) · \(l.pid)")
         } else {
             Text("not listening")
-                .font(.system(size: 11))
+                .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
         }
     }
@@ -395,7 +395,7 @@ struct UserSectionHeader: View {
                 Text(verbatim: String(listening)).monospacedDigit()
             }
         }
-        .font(.system(size: 11, weight: .semibold))
+        .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(.tertiary)
         .padding(.horizontal, 12)
         .padding(.top, 10)
@@ -428,7 +428,7 @@ struct SectionHeading: View {
             Spacer()
             Text(verbatim: String(count)).monospacedDigit()
         }
-        .font(.system(size: 11, weight: .semibold))
+        .font(.system(size: 12, weight: .semibold))
         .foregroundStyle(.tertiary)
         .padding(.horizontal, 12)
         .padding(.top, 10)
@@ -442,7 +442,7 @@ struct FoldChevron: View {
     let collapsed: Bool
     var body: some View {
         Image(systemName: "chevron.right")
-            .font(.system(size: 8, weight: .bold))
+            .font(.system(size: 9, weight: .bold))
             .rotationEffect(.degrees(collapsed ? 0 : 90))
     }
 }
