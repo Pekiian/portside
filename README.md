@@ -31,9 +31,15 @@ A `LAN` port answers on this Mac's network address, so other machines on the net
 
 ## Your ports, then everything else
 
-Ports you're working on sort first. Spotify, a helper daemon and an updater sort below a **Background apps** heading, and **Show background apps** in Settings hides them entirely.
+Ports you're working on sort first. Spotify, a helper daemon and an updater sort below a **Background apps** heading — click it to fold them away — and **Show background apps** in Settings hides them entirely.
 
 The split needs no list of app names: a GUI app is launched by Finder or launchd and inherits `/` as its working directory, while a dev server is started from a checkout and inherits that. So a row is yours when it runs from a real directory, or when a container stands behind it. Whatever you install next month is classified correctly without Portside knowing it exists.
+
+## Your own sections
+
+Some of what listens on localhost isn't a project you're working on — an assistant you run every day, a gateway that has to stay up. Right-click a row → **Move to Section → New Section…** to file it under a heading of your own, or drag the row onto an existing heading. Sections sit between your ports and background apps; drag a heading onto another to reorder them, click it to fold it, right-click to rename or delete it. Drag a row onto the **Localhost** heading to bring it back.
+
+Ports in a section stay visible when they stop, like pins, so you notice when the thing you set aside is down. They don't count toward the menu bar number: that's for what you're working on.
 
 ## Localhost only — by design
 
