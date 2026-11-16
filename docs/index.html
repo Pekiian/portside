@@ -119,8 +119,11 @@
   .cmd { display: flex; align-items: center; gap: 12px; margin-top: 24px; background: var(--panel); border-radius: 10px; padding: 14px 14px 14px 17px; }
   .cmd code { color: #d5e6ea; font-size: 13px; flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
   .cmd code::-webkit-scrollbar { display: none }
-  #copy { font: inherit; font-size: 12px; font-weight: 500; flex: none; cursor: pointer; background: rgba(255,255,255,.1); color: var(--panel-ink); border: 0; border-radius: 7px; padding: 7px 14px; }
-  #copy:hover { background: rgba(255,255,255,.18); }
+  .copy { font: inherit; font-size: 12px; font-weight: 500; flex: none; cursor: pointer; background: rgba(255,255,255,.1); color: var(--panel-ink); border: 0; border-radius: 7px; padding: 7px 14px; }
+  .copy:hover { background: rgba(255,255,255,.18); }
+  .cmd.prompt { align-items: flex-start; }
+  .cmd.prompt code { white-space: pre-wrap; overflow-x: visible; line-height: 1.6; }
+  .band p.or { margin-top: 26px; }
   .band p.req { margin-top: 18px; font-size: 14px; }
 
   footer { border-top: 1px solid var(--rule); padding: 26px 0 48px; font-size: 14px; color: var(--ink-2); }
@@ -295,10 +298,19 @@
 <section class="band" id="install">
   <div class="wrap">
     <h2>Install</h2>
-    <p>Clone it and run the build script. It builds the app and puts it in <span class="mono">/Applications</span>.</p>
+    <p>Hand it to your coding agent. Paste this into Claude Code, Cursor, or whatever you use:</p>
+    <div class="cmd prompt">
+      <code class="mono" id="prompt">Install Portside, a macOS menu bar app that shows what's listening on localhost: https://github.com/Pekiian/portside
+
+1. Check that I'm on macOS 14 or later and that `swift --version` works. If Swift is missing, run `xcode-select --install` and wait for me to finish the installer.
+2. Clone the repo where I keep my code (ask me if you're not sure), read build.sh, then run `./build.sh --install`. It builds the app and copies it to /Applications.
+3. Open /Applications/Portside.app and tell me to look for the network icon with a number in my menu bar.</code>
+      <button class="copy" type="button" data-copy="prompt">Copy prompt</button>
+    </div>
+    <p class="or">Or do it yourself. The build script puts the app in <span class="mono">/Applications</span>.</p>
     <div class="cmd">
-      <code class="mono">git clone https://github.com/Pekiian/portside &amp;&amp; cd portside &amp;&amp; ./build.sh --install</code>
-      <button id="copy" type="button">Copy</button>
+      <code class="mono" id="command">git clone https://github.com/Pekiian/portside &amp;&amp; cd portside &amp;&amp; ./build.sh --install</code>
+      <button class="copy" type="button" data-copy="command">Copy</button>
     </div>
     <p class="req">Requires macOS 14 or later and the Swift toolchain.</p>
   </div>
@@ -313,17 +325,18 @@
 </footer>
 
 <script>
-  const button = document.getElementById("copy");
-  const command = "git clone https://github.com/Pekiian/portside && cd portside && ./build.sh --install";
-  button.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(command);
-      button.textContent = "Copied";
-    } catch {
-      button.textContent = "Press ⌘C";
-    }
-    setTimeout(() => (button.textContent = "Copy"), 1600);
-  });
+  for (const button of document.querySelectorAll(".copy")) {
+    const label = button.textContent;
+    button.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(document.getElementById(button.dataset.copy).textContent);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Press ⌘C";
+      }
+      setTimeout(() => (button.textContent = label), 1600);
+    });
+  }
 </script>
 </body>
 </html>
