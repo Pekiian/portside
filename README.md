@@ -57,6 +57,8 @@ System daemons (root-owned under `/usr/libexec`, `/usr/sbin`, `/System`, plus `r
 
 Requires macOS 14+ and the Swift toolchain.
 
+Easiest: copy the install prompt from [the landing page](https://pekiian.github.io/portside/#install) into your coding agent. By hand:
+
 ```sh
 ./build.sh            # runs tests, builds release, assembles dist/Portside.app
 ./build.sh --install  # also copies it to /Applications, restarting it if it was running
