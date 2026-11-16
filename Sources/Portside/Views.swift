@@ -336,9 +336,9 @@ struct ListenerRow: View {
             }
             if !prefs.sections.isEmpty { Divider() }
             Button("New Section…", action: onNewSection)
-            if row.section != nil {
-                Button("Back to Main List") { prefs.setSection(nil, for: row.port) }
-            }
+        }
+        if let section = row.section {
+            Button("Remove from \(section)") { prefs.setSection(nil, for: row.port) }
         }
         if row.isListening {
             Divider()
