@@ -10,6 +10,9 @@ struct MenuContentView: View {
     @State private var showSettings = false
     @State private var editingPort: Int?
     @State private var draft = ""
+    @State private var editingSection: String?
+    @State private var sectionDraft = ""
+    @State private var mainTargeted = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -17,31 +20,43 @@ struct MenuContentView: View {
             Divider()
             if showSettings {
                 SettingsPanel()
-            } else if model.rows.isEmpty {
+            } else if model.rows.isEmpty && prefs.sections.isEmpty {
                 EmptyStateView()
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(model.rows) { row in
-                            // the first background app opens the section below your own ports
-                            if row.isBackgroundApp, row.id == model.firstBackgroundRowID {
-                                SectionHeading(text: "Background apps")
-                            }
-                            ListenerRow(
-                                row: row,
-                                isEditing: editingPort == row.port,
-                                draft: $draft,
-                                onBeginRename: { beginRename(row) },
-                                onCommit: commitRename,
-                                onCancel: { editingPort = nil }
+                        // your ports, then your sections in your order, then background apps
+                        rowList(mainRows)
+                        ForEach(prefs.sections, id: \.self) { name in
+                            let rows = model.rows.filter { $0.section == name }
+                            let collapsed = prefs.collapsedSections.contains(name)
+                            UserSectionHeader(
+                                name: name,
+                                listening: rows.filter(\.isListening).count,
+                                collapsed: collapsed,
+                                isEditing: editingSection == name,
+                                draft: $sectionDraft,
+                                onBeginRename: { sectionDraft = name; editingSection = name },
+                                onCommit: commitSectionRename,
+                                onCancel: { editingSection = nil },
+                                onDrop: { drop($0, on: name) }
                             )
-                            if row.id != model.rows.last?.id { Divider().opacity(0.4) }
+                            if !collapsed { rowList(rows) }
+                        }
+                        if !backgroundRows.isEmpty {
+                            SectionHeading(
+                                text: "Background apps",
+                                count: backgroundRows.count,
+                                collapsed: prefs.backgroundCollapsed,
+                                onToggle: { withAnimation(.fold) { prefs.backgroundCollapsed.toggle() } }
+                            )
+                            if !prefs.backgroundCollapsed { rowList(backgroundRows) }
                         }
                     }
                 }
                 // ScrollView has no intrinsic height in a content-sized window;
-                // size it to the rows, capped so the whole popover stays ~500pt.
-                .frame(height: min(CGFloat(model.rows.count) * 46, 400))
+                // size it to the content, capped so the whole popover stays ~500pt.
+                .frame(height: min(listHeight, 400))
             }
             Divider()
             footer
@@ -62,6 +77,67 @@ struct MenuContentView: View {
         .padding(.horizontal, 12)
         .padding(.top, 12)
         .padding(.bottom, 8)
+        // dropping a row here takes it out of its section
+        .background(mainTargeted ? Color.accentColor.opacity(0.15) : .clear)
+        .dropDestination(for: String.self) { items, _ in drop(items, on: nil) } isTargeted: { mainTargeted = $0 }
+    }
+
+    // MARK: grouping
+
+    private var mainRows: [PortRow] { model.rows.filter { $0.section == nil && !$0.isBackgroundApp } }
+    private var backgroundRows: [PortRow] { model.rows.filter { $0.section == nil && $0.isBackgroundApp } }
+
+    private var listHeight: CGFloat {
+        let visibleRows = model.rows.filter { row in
+            if let s = row.section { return !prefs.collapsedSections.contains(s) }
+            return !(row.isBackgroundApp && prefs.backgroundCollapsed)
+        }.count
+        let headings = prefs.sections.count + (backgroundRows.isEmpty ? 0 : 1)
+        return CGFloat(visibleRows) * 48 + CGFloat(headings) * 34
+    }
+
+    @ViewBuilder private func rowList(_ rows: [PortRow]) -> some View {
+        ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
+            if i > 0 { Divider().opacity(0.4) }
+            ListenerRow(
+                row: row,
+                isEditing: editingPort == row.port,
+                draft: $draft,
+                onBeginRename: { beginRename(row) },
+                onCommit: commitRename,
+                onCancel: { editingPort = nil },
+                onNewSection: { newSection(for: row.port) }
+            )
+            .draggable(DragItem.port(row.port))
+        }
+    }
+
+    // MARK: sections
+
+    /// A row dropped on a section moves into it (nil = main list); a section
+    /// header dropped on another reorders them.
+    private func drop(_ items: [String], on section: String?) -> Bool {
+        for item in items {
+            if let port = DragItem.port(from: item) {
+                prefs.setSection(section, for: port)
+            } else if let moved = DragItem.section(from: item), let section {
+                prefs.moveSection(moved, onto: section)
+            }
+        }
+        return true
+    }
+
+    private func newSection(for port: Int) {
+        let name = prefs.addSection()
+        prefs.setSection(name, for: port)
+        sectionDraft = name
+        editingSection = name     // name it right away
+    }
+
+    private func commitSectionRename() {
+        guard let old = editingSection else { return }
+        prefs.renameSection(old, to: sectionDraft)
+        editingSection = nil
     }
 
     private var footer: some View {
@@ -111,7 +187,9 @@ struct ListenerRow: View {
     var onBeginRename: () -> Void
     var onCommit: () -> Void
     var onCancel: () -> Void
+    var onNewSection: () -> Void
     @EnvironmentObject var model: AppModel
+    @EnvironmentObject var prefs: Preferences
     @State private var hovering = false
     @FocusState private var fieldFocused: Bool
 
@@ -194,20 +272,20 @@ struct ListenerRow: View {
     @ViewBuilder private var secondaryLine: some View {
         if let message = row.statusMessage {
             Text(message)
-                .font(.system(size: 11))
+                .font(.system(size: 12))
                 .foregroundStyle(.orange)
         } else if let l = row.listener {
             // container image, workspace path, or the process name when
             // nothing else has named the row. Full detail on hover.
             Text(verbatim: l.subtitle)
-                .font(.system(size: 11))
+                .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
                 .lineLimit(1)
                 .truncationMode(.head)
                 .help("\(l.cwd ?? "")\n\(l.processName) · \(l.pid)")
         } else {
             Text("not listening")
-                .font(.system(size: 11))
+                .font(.system(size: 12))
                 .foregroundStyle(.tertiary)
         }
     }
@@ -243,10 +321,21 @@ struct ListenerRow: View {
                 }
             }
         }
-        Button(model.prefs.isPinned(row.port) ? "Unpin" : "Pin") {
-            model.prefs.togglePin(row.port)
+        Button(prefs.isPinned(row.port) ? "Unpin" : "Pin") {
+            prefs.togglePin(row.port)
         }
         Button("Rename", action: onBeginRename)
+        Menu("Move to Section") {
+            ForEach(prefs.sections, id: \.self) { name in
+                Button(name) { prefs.setSection(name, for: row.port) }
+                    .disabled(name == row.section)
+            }
+            if !prefs.sections.isEmpty { Divider() }
+            Button("New Section…", action: onNewSection)
+            if row.section != nil {
+                Button("Back to Main List") { prefs.setSection(nil, for: row.port) }
+            }
+        }
         if row.isListening {
             Divider()
             Button("Kill") { model.kill(row, force: false) }
@@ -255,23 +344,117 @@ struct ListenerRow: View {
     }
 }
 
-/// Bound to every interface, so the port answers on this Mac's network address
-/// too. Outlined rather than filled so it reads as a note about the row instead
-/// of a second runtime tag.
-/// Divides the user's own ports from everything else in the list.
-struct SectionHeading: View {
-    let text: String
-    var body: some View {
-        Text(text)
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.tertiary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 4)
+/// Drag payloads. Plain strings with a prefix, so one drop target can tell a
+/// dragged row from a dragged section header.
+enum DragItem {
+    static func port(_ port: Int) -> String { "port:\(port)" }
+    static func section(_ name: String) -> String { "section:\(name)" }
+    static func port(from item: String) -> Int? {
+        item.hasPrefix("port:") ? Int(item.dropFirst(5)) : nil
+    }
+    static func section(from item: String) -> String? {
+        item.hasPrefix("section:") ? String(item.dropFirst(8)) : nil
     }
 }
 
+/// Heading of a section the user made: click to fold, drag to reorder, drop
+/// rows on it to file them, right-click to rename or delete.
+struct UserSectionHeader: View {
+    let name: String
+    let listening: Int
+    let collapsed: Bool
+    var isEditing: Bool
+    @Binding var draft: String
+    var onBeginRename: () -> Void
+    var onCommit: () -> Void
+    var onCancel: () -> Void
+    var onDrop: ([String]) -> Bool
+    @EnvironmentObject var prefs: Preferences
+    @State private var targeted = false
+    @FocusState private var fieldFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            FoldChevron(collapsed: collapsed)
+            if isEditing {
+                TextField("Section name", text: $draft)
+                    .textFieldStyle(.plain)
+                    .foregroundStyle(.primary)
+                    .focused($fieldFocused)
+                    .onSubmit(onCommit)
+                    .onExitCommand(perform: onCancel)
+                    .onAppear { fieldFocused = true }
+                    .onChange(of: fieldFocused) { _, focused in
+                        if !focused { onCommit() }
+                    }
+            } else {
+                Text(name)
+            }
+            Spacer()
+            if listening > 0 {
+                Text(verbatim: String(listening)).monospacedDigit()
+            }
+        }
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(.tertiary)
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .contentShape(Rectangle())
+        .background(targeted ? Color.accentColor.opacity(0.15) : .clear)
+        .onTapGesture {
+            if !isEditing { withAnimation(.fold) { prefs.toggleCollapsed(name) } }
+        }
+        .contextMenu {
+            Button("Rename", action: onBeginRename)
+            Button("Delete Section", role: .destructive) { prefs.deleteSection(name) }
+        }
+        .draggable(DragItem.section(name))
+        .dropDestination(for: String.self) { items, _ in onDrop(items) } isTargeted: { targeted = $0 }
+    }
+}
+
+/// Divides the user's own ports from everything else in the list. Click to fold.
+struct SectionHeading: View {
+    let text: String
+    let count: Int
+    let collapsed: Bool
+    var onToggle: () -> Void
+
+    var body: some View {
+        HStack(spacing: 5) {
+            FoldChevron(collapsed: collapsed)
+            Text(text)
+            Spacer()
+            Text(verbatim: String(count)).monospacedDigit()
+        }
+        .font(.system(size: 12, weight: .semibold))
+        .foregroundStyle(.tertiary)
+        .padding(.horizontal, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onToggle)
+    }
+}
+
+struct FoldChevron: View {
+    let collapsed: Bool
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 9, weight: .bold))
+            .rotationEffect(.degrees(collapsed ? 0 : 90))
+    }
+}
+
+extension Animation {
+    /// Opening and folding a section: rows fade, the list height and chevron follow.
+    static let fold = Animation.easeInOut(duration: 0.22)
+}
+
+/// Bound to every interface, so the port answers on this Mac's network address
+/// too. Outlined rather than filled so it reads as a note about the row instead
+/// of a second runtime tag.
 struct LANPill: View {
     var body: some View {
         Text("LAN")

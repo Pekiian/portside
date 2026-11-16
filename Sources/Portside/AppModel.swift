@@ -6,13 +6,15 @@ import UserNotifications
 import ServiceManagement
 import PortsideCore
 
-/// One displayed row: a live listener, or a pinned placeholder when its port
-/// isn't currently listening.
+/// One displayed row: a live listener, or a placeholder for a pinned or
+/// sectioned port that isn't currently listening.
 struct PortRow: Identifiable, Equatable {
     let port: Int
     var listener: Listener?
     var label: String?
     var pinned: Bool
+    /// User-made section this port lives in; nil = the main list.
+    var section: String?
     var statusMessage: String?
 
     var id: Int { port }
@@ -32,8 +34,6 @@ struct PortRow: Identifiable, Equatable {
 final class AppModel: ObservableObject {
     @Published private(set) var rows: [PortRow] = []
 
-    /// Where the "Background apps" heading goes, or nil when there are none.
-    var firstBackgroundRowID: Int? { rows.first { $0.isBackgroundApp }?.id }
     @Published var isMenuOpen = false { didSet { restartPolling() } }
 
     let prefs = Preferences()
@@ -43,8 +43,9 @@ final class AppModel: ObservableObject {
     private var isAsleep = false
     private var lastActivePins: Set<Int> = []
 
-    /// Badge = distinct localhost ports currently listening.
-    var badgeCount: Int { rows.filter { $0.isListening }.count }
+    /// Badge = ports listening in the main list. Ports filed into a section are
+    /// ones the user set aside, so they don't add to the count.
+    var badgeCount: Int { rows.filter { $0.isListening && $0.section == nil }.count }
 
     init() {
         observeSleepWake()
@@ -56,6 +57,7 @@ final class AppModel: ObservableObject {
         // rebuild rows when labels/pins/showSystem change without waiting for poll
         prefs.$labels.dropFirst().sink { [weak self] _ in self?.refreshNow() }.store(in: &cancellables)
         prefs.$pinnedPorts.dropFirst().sink { [weak self] _ in self?.refreshNow() }.store(in: &cancellables)
+        prefs.$sectionByPort.dropFirst().sink { [weak self] _ in self?.refreshNow() }.store(in: &cancellables)
         prefs.$showSystem.dropFirst().sink { [weak self] _ in self?.refreshNow() }.store(in: &cancellables)
         prefs.$showBackgroundApps.dropFirst().sink { [weak self] _ in self?.refreshNow() }.store(in: &cancellables)
 
@@ -88,7 +90,7 @@ final class AppModel: ObservableObject {
         withAnimation(.easeInOut(duration: 0.18)) { self.rows = newRows }
     }
 
-    // MARK: row assembly (pins to top, placeholders for down pins)
+    // MARK: row assembly (pins to top, placeholders for down pins/sectioned ports)
 
     private func buildRows(from listeners: [Listener]) -> [PortRow] {
         let activePorts = Set(listeners.map(\.port))
@@ -99,20 +101,26 @@ final class AppModel: ObservableObject {
                 listener: l,
                 label: prefs.label(for: l.port),
                 pinned: prefs.isPinned(l.port),
+                section: prefs.section(for: l.port),
                 statusMessage: statusByPort[l.port]
             )
         }
-        // placeholder rows for pinned-but-down ports
-        for port in prefs.pinnedPorts where !activePorts.contains(port) {
+        // placeholder rows for pinned or sectioned ports that are down, so you
+        // see the app you filed away has stopped instead of it vanishing
+        let kept = prefs.pinnedPorts.union(prefs.sectionByPort.keys)
+        for port in kept where !activePorts.contains(port) {
             rows.append(PortRow(
                 port: port,
                 listener: nil,
                 label: prefs.label(for: port),
-                pinned: true,
+                pinned: prefs.isPinned(port),
+                section: prefs.section(for: port),
                 statusMessage: statusByPort[port]
             ))
         }
-        if !prefs.showBackgroundApps { rows.removeAll { $0.isBackgroundApp && !$0.pinned } }
+        if !prefs.showBackgroundApps {
+            rows.removeAll { $0.isBackgroundApp && !$0.pinned && $0.section == nil }
+        }
         // your own ports first, pinned above those, background apps last
         return rows.sorted {
             if $0.pinned != $1.pinned { return $0.pinned && !$1.pinned }
