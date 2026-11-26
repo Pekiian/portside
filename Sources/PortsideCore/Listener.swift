@@ -84,6 +84,13 @@ public struct Listener: Identifiable, Equatable {
     /// Launched by Finder or launchd rather than started from a checkout, so it
     /// has no working directory: Spotify, helper daemons, updaters.
     public var isBackgroundApp: Bool = false
+    /// The container behind a Docker-published port. Stopping goes through
+    /// Docker with this, never through `pid`, which is Docker itself.
+    public var containerID: String?
+    /// The repository the row runs from, or its compose stack sits in — what
+    /// "stop all in this workspace" groups by — and the name to call it.
+    public var workspacePath: String?
+    public var workspaceName: String?
 
     // user prefs
     public var customLabel: String?

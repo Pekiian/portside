@@ -66,6 +66,7 @@ public actor PortScanner {
             guard let container = containers[listeners[i].port] else { continue }
             listeners[i].projectName = dockerRowName(container, workspaceNames: workspaceNames)
             listeners[i].detail = container.image
+            listeners[i].containerID = container.id.isEmpty ? nil : container.id
             // Terminal, Finder and the editors should land on the compose stack.
             // Without one there is nowhere useful to go, so drop the Docker
             // helper's own storage rather than offer to open it.
@@ -76,6 +77,12 @@ public actor PortScanner {
             listeners[i].isBackgroundApp = isBackgroundApp(cwd: listeners[i].cwd,
                                                            hasContainer: listeners[i].detail != nil,
                                                            homeDir: homeDir)
+            // a dev server and its compose stack share a repository, so they
+            // stop together; a Conductor workspace is a worktree, so it's one too
+            guard let cwd = listeners[i].cwd, let root = repoRoot(of: cwd, homeDir: homeDir) else { continue }
+            listeners[i].workspacePath = root
+            listeners[i].workspaceName = conductorWorkspace(for: root, names: workspaceNames)?.name
+                ?? (root as NSString).lastPathComponent
         }
 
         if !showSystem {

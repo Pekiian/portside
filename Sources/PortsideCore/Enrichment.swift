@@ -134,6 +134,19 @@ public func checkoutName(cwd: String, workspaceNames: [String: String] = [:]) ->
     return noise.contains(leaf) ? enclosing : "\(enclosing)/\(leaf)"
 }
 
+/// The repository a directory belongs to: the nearest ancestor holding `.git`
+/// (a directory in a clone, a file in a worktree). Nil outside one, and never
+/// the home directory — a dotfiles repo there would claim every process.
+public func repoRoot(of dir: String, homeDir: String,
+                     hasGit: (String) -> Bool = { FileManager.default.fileExists(atPath: $0 + "/.git") }) -> String? {
+    var path = dir
+    while path.count > 1, path != homeDir {
+        if hasGit(path) { return path }
+        path = (path as NSString).deletingLastPathComponent
+    }
+    return nil
+}
+
 /// The name a row leads with.
 ///
 /// A directory only gets to name the row when something confirms the process

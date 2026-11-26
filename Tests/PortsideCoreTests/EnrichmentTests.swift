@@ -168,3 +168,17 @@ import Foundation
     #expect(isBackgroundApp(cwd: home + "/Library/Containers/com.docker.docker/Data",
                             hasContainer: false, homeDir: home))
 }
+
+@Test func repoRootIsTheNearestCheckoutBelowHome() {
+    let home = "/Users/pedro"
+    let repos: Set<String> = [home, home + "/conductor/workspaces/core/warsaw"]
+    let hasGit = { repos.contains($0) }
+    // a monorepo app and a compose stack in a subfolder both stop with their checkout
+    #expect(repoRoot(of: home + "/conductor/workspaces/core/warsaw/apps/web",
+                     homeDir: home, hasGit: hasGit) == home + "/conductor/workspaces/core/warsaw")
+    #expect(repoRoot(of: home + "/conductor/workspaces/core/warsaw",
+                     homeDir: home, hasGit: hasGit) == home + "/conductor/workspaces/core/warsaw")
+    // a dotfiles repo in home never groups everything outside a checkout
+    #expect(repoRoot(of: home + "/scratch/server", homeDir: home, hasGit: hasGit) == nil)
+    #expect(repoRoot(of: "/tmp/wa-gateway", homeDir: home, hasGit: hasGit) == nil)
+}

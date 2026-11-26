@@ -6,6 +6,8 @@ import Foundation
 
 /// The container behind a published host port.
 public struct DockerContainer: Equatable {
+    /// What the API addresses the container by, for stopping it.
+    public let id: String
     public let name: String
     public let image: String
     /// Compose's own view of the container, when it was started by compose:
@@ -14,8 +16,9 @@ public struct DockerContainer: Equatable {
     public let service: String?
     public let workingDir: String?
 
-    public init(name: String, image: String,
+    public init(id: String = "", name: String, image: String,
                 project: String? = nil, service: String? = nil, workingDir: String? = nil) {
+        self.id = id
         self.name = name
         self.image = image
         self.project = project
@@ -45,6 +48,7 @@ public func parseDockerContainers(fromJSON json: String) -> [Int: DockerContaine
                   let hostPort = port["PublicPort"] as? Int
             else { continue }
             byPort[hostPort] = DockerContainer(
+                id: container["Id"] as? String ?? "",
                 name: name, image: image,
                 project: labels["com.docker.compose.project"],
                 service: labels["com.docker.compose.service"],
@@ -64,19 +68,38 @@ public func parseDockerContainers(fromJSON json: String) -> [Int: DockerContaine
 // ponytail: spawning curl costs ~35ms per scan; swap for an NWConnection to the
 // socket if it ever shows up in a profile.
 func dockerContainers() async -> [Int: DockerContainer] {
-    let candidates = [
-        NSHomeDirectory() + "/.docker/run/docker.sock",   // Docker Desktop
-        "/var/run/docker.sock",                           // colima, OrbStack, symlink
-    ]
-    guard let socket = candidates.first(where: { FileManager.default.fileExists(atPath: $0) })
-    else { return [:] }
-
+    guard let socket = dockerSocket() else { return [:] }
     let out = await Shell.run("/usr/bin/curl", [
         "-s", "--max-time", "2",
         "--unix-socket", socket,
         "http://localhost/containers/json",
     ])
     return parseDockerContainers(fromJSON: out)
+}
+
+private func dockerSocket() -> String? {
+    [
+        NSHomeDirectory() + "/.docker/run/docker.sock",   // Docker Desktop
+        "/var/run/docker.sock",                           // colima, OrbStack, symlink
+    ].first { FileManager.default.fileExists(atPath: $0) }
+}
+
+/// Stops one container, or kills it with `force`. Signalling the pid behind a
+/// published port instead would take Docker itself down: every container's
+/// ports belong to the one `com.docker.backend` process, so "kill" on a single
+/// row used to stop every container on the machine.
+public func stopContainer(id: String, force: Bool) async -> KillOutcome {
+    guard let socket = dockerSocket() else { return .failed("Docker isn't running") }
+    let action = force ? "kill" : "stop?t=10"   // stop: SIGTERM, SIGKILL after 10s
+    let code = await Shell.run("/usr/bin/curl", [
+        "-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "20",
+        "-X", "POST", "--unix-socket", socket,
+        "http://localhost/containers/\(id)/\(action)",
+    ])
+    switch code {
+    case "204", "304": return force ? .forced : .terminated   // 304: already stopped
+    default: return .failed("Docker answered \(code.isEmpty ? "nothing" : code)")
+    }
 }
 
 /// What a container row leads with.

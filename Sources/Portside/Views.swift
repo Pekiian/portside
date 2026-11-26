@@ -247,7 +247,9 @@ struct ListenerRow: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.red)
-                .help("Kill (SIGTERM, then SIGKILL after 3s)")
+                .help(row.listener?.containerID != nil
+                      ? "Stop container (docker stop)"
+                      : "Kill (SIGTERM, then SIGKILL after 3s)")
                 .pointingHand()
 
                 Button { model.copyURL(row) } label: {
@@ -342,8 +344,17 @@ struct ListenerRow: View {
         }
         if row.isListening {
             Divider()
-            Button("Kill") { model.kill(row, force: false) }
-            Button("Force Kill", role: .destructive) { model.kill(row, force: true) }
+            let isContainer = row.listener?.containerID != nil
+            Button(isContainer ? "Stop Container" : "Kill") { model.kill(row, force: false) }
+            Button(isContainer ? "Kill Container" : "Force Kill", role: .destructive) {
+                model.kill(row, force: true)
+            }
+            if let name = row.listener?.workspaceName {
+                let group = model.workspaceRows(of: row)
+                if group.count > 1 {
+                    Button("Stop All in \(name) (\(group.count))…") { model.stopAll(group, in: name) }
+                }
+            }
         }
     }
 }
@@ -374,6 +385,7 @@ struct UserSectionHeader: View {
     var onCancel: () -> Void
     var onDrop: ([String]) -> Bool
     @EnvironmentObject var prefs: Preferences
+    @EnvironmentObject var model: AppModel
     @State private var targeted = false
     @FocusState private var fieldFocused: Bool
 
@@ -412,6 +424,11 @@ struct UserSectionHeader: View {
         .pointingHand()
         .contextMenu {
             Button("Rename", action: onBeginRename)
+            let live = model.sectionRows(name)
+            if !live.isEmpty {
+                Button("Stop All in \(name) (\(live.count))…") { model.stopAll(live, in: name) }
+            }
+            Divider()
             Button("Delete Section", role: .destructive) { prefs.deleteSection(name) }
         }
         .draggable(DragItem.section(name))
