@@ -397,18 +397,26 @@ struct StopConfirmation: View {
                     .foregroundStyle(.secondary)
             }
 
+            // full-width halves at large size: this is the decision the panel
+            // exists for, so the buttons shouldn't read as footnotes
             HStack(spacing: 8) {
-                Spacer()
-                Button("Cancel") { model.cancelPendingStop() }
-                    .keyboardShortcut(.cancelAction)
-                    .pointingHand()
-                Button("Stop") { model.confirmPendingStop() }
-                    .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                    .pointingHand()
+                Button { model.cancelPendingStop() } label: {
+                    Text("Cancel").frame(maxWidth: .infinity)
+                }
+                .keyboardShortcut(.cancelAction)
+                .pointingHand()
+                Button { model.confirmPendingStop() } label: {
+                    Text("Stop \(pending.rows.count == 1 ? "1 Port" : "\(pending.rows.count) Ports")")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .pointingHand()
             }
-            .padding(.top, 2)
+            .controlSize(.large)
+            .padding(.top, 4)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
