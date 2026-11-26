@@ -30,11 +30,23 @@ struct PortRow: Identifiable, Equatable {
     }
 }
 
+/// A group stop waiting for the user to confirm it in the popover.
+struct PendingStop {
+    let name: String
+    let rows: [PortRow]
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var rows: [PortRow] = []
 
-    @Published var isMenuOpen = false { didSet { restartPolling() } }
+    @Published var isMenuOpen = false {
+        didSet {
+            restartPolling()
+            if !isMenuOpen { pendingStop = nil }   // closing the popover cancels
+        }
+    }
+    @Published var pendingStop: PendingStop?
 
     let prefs = Preferences()
     private let scanner = PortScanner()
@@ -209,10 +221,17 @@ final class AppModel: ObservableObject {
         rows.filter { $0.isListening && $0.section == name }
     }
 
-    /// Asks first, then stops them all at once. A process listening on several
-    /// ports, or a container publishing several, is stopped once.
+    /// Asks first, in the popover; `confirmPendingStop` does the stopping.
     func stopAll(_ rows: [PortRow], in name: String) {
-        guard !rows.isEmpty, confirmStop(rows, in: name) else { return }
+        guard !rows.isEmpty else { return }
+        pendingStop = PendingStop(name: name, rows: rows)
+    }
+
+    /// Stops them all at once. A process listening on several ports, or a
+    /// container publishing several, is stopped once.
+    func confirmPendingStop() {
+        guard let rows = pendingStop?.rows else { return }
+        pendingStop = nil
         var portsByTarget: [String: [Int]] = [:]
         var targets: [String: Listener] = [:]
         for row in rows {
@@ -231,20 +250,6 @@ final class AppModel: ObservableObject {
             }
             await tick()
         }
-    }
-
-    private func confirmStop(_ rows: [PortRow], in name: String) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = rows.count == 1 ? "Stop 1 port in \(name)?" : "Stop \(rows.count) ports in \(name)?"
-        var detail = rows.map { ":\($0.port)  \($0.title)" }.joined(separator: "\n")
-        if rows.contains(where: { $0.listener?.containerID != nil }) {
-            detail += "\n\nContainers are stopped, not removed. Their data stays."
-        }
-        alert.informativeText = detail
-        alert.addButton(withTitle: "Stop")
-        alert.addButton(withTitle: "Cancel")
-        NSApp.activate(ignoringOtherApps: true)
-        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func flash(_ port: Int, _ message: String, clearAfter seconds: Double = 0) {
