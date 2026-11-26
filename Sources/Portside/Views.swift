@@ -18,7 +18,10 @@ struct MenuContentView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if showSettings {
+            if let pending = model.pendingStop {
+                StopConfirmation(pending: pending)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
+            } else if showSettings {
                 SettingsPanel()
             } else if model.rows.isEmpty && prefs.sections.isEmpty {
                 EmptyStateView()
@@ -57,6 +60,7 @@ struct MenuContentView: View {
                 // ScrollView has no intrinsic height in a content-sized window;
                 // size it to the content, capped so the whole popover stays ~500pt.
                 .frame(height: min(listHeight, 400))
+                .transition(.opacity)
             }
             Divider()
             footer
@@ -247,7 +251,9 @@ struct ListenerRow: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.red)
-                .help("Kill (SIGTERM, then SIGKILL after 3s)")
+                .help(row.listener?.containerID != nil
+                      ? "Stop container (docker stop)"
+                      : "Kill (SIGTERM, then SIGKILL after 3s)")
                 .pointingHand()
 
                 Button { model.copyURL(row) } label: {
@@ -268,6 +274,7 @@ struct ListenerRow: View {
         .contentShape(Rectangle())
         .background(hovering ? Color.primary.opacity(0.06) : .clear)
         .onHover { hovering = $0 }
+        .pointingHand(row.isListening && !isEditing)   // the row opens its URL
         .onTapGesture(count: 2) { onBeginRename() }
         .onTapGesture { handleTap() }
         .contextMenu { contextMenu }
@@ -342,9 +349,84 @@ struct ListenerRow: View {
         }
         if row.isListening {
             Divider()
-            Button("Kill") { model.kill(row, force: false) }
-            Button("Force Kill", role: .destructive) { model.kill(row, force: true) }
+            let isContainer = row.listener?.containerID != nil
+            Button(isContainer ? "Stop Container" : "Kill") { model.kill(row, force: false) }
+            Button(isContainer ? "Kill Container" : "Force Kill", role: .destructive) {
+                model.kill(row, force: true)
+            }
+            if let name = row.listener?.workspaceName {
+                let group = model.workspaceRows(of: row)
+                if group.count > 1 {
+                    Button("Stop All in \(name) (\(group.count))…") { model.stopAll(group, in: name) }
+                }
+            }
         }
+    }
+}
+
+/// Confirms a group stop inside the popover, in place of the list.
+struct StopConfirmation: View {
+    let pending: PendingStop
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(pending.rows.count == 1 ? "Stop 1 port in \(pending.name)?"
+                                         : "Stop \(pending.rows.count) ports in \(pending.name)?")
+                .font(.system(size: 13, weight: .semibold))
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(pending.rows) { row in
+                    HStack(spacing: 8) {
+                        Text(verbatim: ":" + String(row.port))
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .frame(width: 52, alignment: .leading)
+                        Text(shortTitle(row))
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 4)
+                        if let runtime = row.listener?.runtime { RuntimePill(text: runtime) }
+                    }
+                }
+            }
+
+            if pending.rows.contains(where: { $0.listener?.containerID != nil }) {
+                Text("Containers are stopped, not removed. Their data stays.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            // full-width halves at large size: this is the decision the panel
+            // exists for, so the buttons shouldn't read as footnotes
+            HStack(spacing: 8) {
+                Button { model.cancelPendingStop() } label: {
+                    Text("Cancel").frame(maxWidth: .infinity)
+                }
+                .keyboardShortcut(.cancelAction)
+                .pointingHand()
+                Button { model.confirmPendingStop() } label: {
+                    Text("Stop \(pending.rows.count == 1 ? "1 Port" : "\(pending.rows.count) Ports")")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .pointingHand()
+            }
+            .controlSize(.large)
+            .padding(.top, 4)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Every row is in the same workspace, so drop it from the name:
+    /// "BR Burgers Cambios/storefront" reads "storefront".
+    private func shortTitle(_ row: PortRow) -> String {
+        let prefix = pending.name + "/"
+        return row.title.hasPrefix(prefix) ? String(row.title.dropFirst(prefix.count)) : row.title
     }
 }
 
@@ -374,6 +456,7 @@ struct UserSectionHeader: View {
     var onCancel: () -> Void
     var onDrop: ([String]) -> Bool
     @EnvironmentObject var prefs: Preferences
+    @EnvironmentObject var model: AppModel
     @State private var targeted = false
     @FocusState private var fieldFocused: Bool
 
@@ -412,6 +495,11 @@ struct UserSectionHeader: View {
         .pointingHand()
         .contextMenu {
             Button("Rename", action: onBeginRename)
+            let live = model.sectionRows(name)
+            if !live.isEmpty {
+                Button("Stop All in \(name) (\(live.count))…") { model.stopAll(live, in: name) }
+            }
+            Divider()
             Button("Delete Section", role: .destructive) { prefs.deleteSection(name) }
         }
         .draggable(DragItem.section(name))
@@ -456,11 +544,12 @@ struct FoldChevron: View {
 extension View {
     /// Hand cursor over something clickable. macOS 15 has it built in; on 14,
     /// push/pop by hover.
-    @ViewBuilder func pointingHand() -> some View {
+    @ViewBuilder func pointingHand(_ enabled: Bool = true) -> some View {
         if #available(macOS 15, *) {
-            pointerStyle(.link)
+            pointerStyle(enabled ? .link : nil)
         } else {
             onHover { inside in
+                guard enabled else { return }
                 if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
             }
         }
@@ -470,6 +559,9 @@ extension View {
 extension Animation {
     /// Opening and folding a section: rows fade, the list height and chevron follow.
     static let fold = Animation.easeInOut(duration: 0.22)
+    /// Swapping the list for a panel in its place (the Stop All confirmation):
+    /// the panel fades and settles in while the popover height follows.
+    static let panel = Animation.smooth(duration: 0.3)
 }
 
 /// Bound to every interface, so the port answers on this Mac's network address

@@ -35,6 +35,12 @@ Ports you're working on sort first. Spotify, a helper daemon and an updater sort
 
 The split needs no list of app names: a GUI app is launched by Finder or launchd and inherits `/` as its working directory, while a dev server is started from a checkout and inherits that. So a row is yours when it runs from a real directory, or when a container stands behind it. Whatever you install next month is classified correctly without Portside knowing it exists.
 
+## Stopping things
+
+**Kill** sends SIGTERM, then SIGKILL after three seconds. On a container row it's **Stop Container** instead, through Docker's socket: every published port belongs to Docker's one `com.docker.backend` process, so signalling that pid would stop every container on the machine.
+
+**Stop All in san-diego…** stops every port that runs from the same repository: the dev servers and the compose stack together. It asks first, lists what it will stop, and leaves out ports you filed into a section. Containers are stopped, not removed. A section's heading has the same action for the ports in it.
+
 ## Your own sections
 
 Some of what listens on localhost isn't a project you're working on — an assistant you run every day, a gateway that has to stay up. Right-click a row → **Move to Section → New Section…** to file it under a heading of your own, or drag the row onto an existing heading. Sections sit between your ports and background apps; drag a heading onto another to reorder them, click it to fold it, right-click to rename or delete it. Right-click → **Remove from <section>** or drag the row onto the **Localhost** heading to bring it back.

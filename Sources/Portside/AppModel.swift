@@ -30,11 +30,23 @@ struct PortRow: Identifiable, Equatable {
     }
 }
 
+/// A group stop waiting for the user to confirm it in the popover.
+struct PendingStop {
+    let name: String
+    let rows: [PortRow]
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var rows: [PortRow] = []
 
-    @Published var isMenuOpen = false { didSet { restartPolling() } }
+    @Published var isMenuOpen = false {
+        didSet {
+            restartPolling()
+            if !isMenuOpen { pendingStop = nil }   // closing the popover cancels
+        }
+    }
+    @Published var pendingStop: PendingStop?
 
     let prefs = Preferences()
     private let scanner = PortScanner()
@@ -172,14 +184,73 @@ final class AppModel: ObservableObject {
     }
 
     func kill(_ row: PortRow, force: Bool) {
-        guard let pid = row.listener?.pid else { return }
+        guard let listener = row.listener else { return }
         flash(row.port, force ? "Force killing…" : "Stopping…")
         Task {
-            let outcome = await ProcessControl.kill(pid: pid, force: force)
-            switch outcome {
-            case .terminated: flash(row.port, "Stopped", clearAfter: 2)
-            case .forced: flash(row.port, "Force killed", clearAfter: 2)
-            case .failed(let msg): flash(row.port, "Failed: \(msg)", clearAfter: 4)
+            report(row.port, await Self.stop(listener, force: force))
+            await tick()
+        }
+    }
+
+    /// A container goes through Docker; anything else gets signalled.
+    nonisolated private static func stop(_ l: Listener, force: Bool) async -> KillOutcome {
+        if let id = l.containerID { return await stopContainer(id: id, force: force) }
+        // a Docker port whose container wasn't found: its pid is Docker itself
+        if l.runtime == "Docker" { return .failed("container not found") }
+        return await ProcessControl.kill(pid: l.pid, force: force)
+    }
+
+    private func report(_ port: Int, _ outcome: KillOutcome) {
+        switch outcome {
+        case .terminated: flash(port, "Stopped", clearAfter: 2)
+        case .forced: flash(port, "Force killed", clearAfter: 2)
+        case .failed(let msg): flash(port, "Failed: \(msg)", clearAfter: 4)
+        }
+    }
+
+    // MARK: stop a whole group
+
+    /// Every listening port from the same repository as `row`, minus the ones
+    /// filed into a section: those were set aside as not-development.
+    func workspaceRows(of row: PortRow) -> [PortRow] {
+        guard let path = row.listener?.workspacePath else { return [] }
+        return rows.filter { $0.isListening && $0.section == nil && $0.listener?.workspacePath == path }
+    }
+
+    func sectionRows(_ name: String) -> [PortRow] {
+        rows.filter { $0.isListening && $0.section == name }
+    }
+
+    /// Asks first, in the popover; `confirmPendingStop` does the stopping.
+    func stopAll(_ rows: [PortRow], in name: String) {
+        guard !rows.isEmpty else { return }
+        withAnimation(.panel) { pendingStop = PendingStop(name: name, rows: rows) }
+    }
+
+    func cancelPendingStop() {
+        withAnimation(.panel) { pendingStop = nil }
+    }
+
+    /// Stops them all at once. A process listening on several ports, or a
+    /// container publishing several, is stopped once.
+    func confirmPendingStop() {
+        guard let rows = pendingStop?.rows else { return }
+        withAnimation(.panel) { pendingStop = nil }
+        var portsByTarget: [String: [Int]] = [:]
+        var targets: [String: Listener] = [:]
+        for row in rows {
+            guard let l = row.listener else { continue }
+            let key = l.containerID ?? "pid:\(l.pid)"
+            portsByTarget[key, default: []].append(row.port)
+            targets[key] = l
+            flash(row.port, "Stopping…")
+        }
+        Task {
+            await withTaskGroup(of: (String, KillOutcome).self) { group in
+                for (key, l) in targets { group.addTask { (key, await Self.stop(l, force: false)) } }
+                for await (key, outcome) in group {
+                    for port in portsByTarget[key] ?? [] { report(port, outcome) }
+                }
             }
             await tick()
         }

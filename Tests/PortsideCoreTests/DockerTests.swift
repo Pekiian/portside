@@ -5,7 +5,7 @@ import Testing
     // shape of Docker's GET /containers/json, including the IPv4+IPv6 pair a
     // published port always comes in
     let json = """
-    [{"Names":["/it-journal-test"],"Image":"postgres:16-alpine","Ports":[
+    [{"Id":"4f1c9a","Names":["/it-journal-test"],"Image":"postgres:16-alpine","Ports":[
       {"IP":"0.0.0.0","PrivatePort":5432,"PublicPort":5599,"Type":"tcp"},
       {"IP":"::","PrivatePort":5432,"PublicPort":5599,"Type":"tcp"}]},
      {"Names":["/wa-gateway-app"],"Image":"golang:1.25","Ports":[
@@ -13,7 +13,7 @@ import Testing
     """
     let map = parseDockerContainers(fromJSON: json)
     #expect(map.count == 2)
-    #expect(map[5599] == DockerContainer(name: "it-journal-test", image: "postgres:16-alpine"))
+    #expect(map[5599] == DockerContainer(id: "4f1c9a", name: "it-journal-test", image: "postgres:16-alpine"))
     #expect(map[8080] == DockerContainer(name: "wa-gateway-app", image: "golang:1.25"))
     // the container port itself is not a host port
     #expect(map[5432] == nil)
