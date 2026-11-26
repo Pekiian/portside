@@ -20,6 +20,7 @@ struct MenuContentView: View {
             Divider()
             if let pending = model.pendingStop {
                 StopConfirmation(pending: pending)
+                    .transition(.opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
             } else if showSettings {
                 SettingsPanel()
             } else if model.rows.isEmpty && prefs.sections.isEmpty {
@@ -59,6 +60,7 @@ struct MenuContentView: View {
                 // ScrollView has no intrinsic height in a content-sized window;
                 // size it to the content, capped so the whole popover stays ~500pt.
                 .frame(height: min(listHeight, 400))
+                .transition(.opacity)
             }
             Divider()
             footer
@@ -397,7 +399,7 @@ struct StopConfirmation: View {
 
             HStack(spacing: 8) {
                 Spacer()
-                Button("Cancel") { model.pendingStop = nil }
+                Button("Cancel") { model.cancelPendingStop() }
                     .keyboardShortcut(.cancelAction)
                     .pointingHand()
                 Button("Stop") { model.confirmPendingStop() }
@@ -549,6 +551,9 @@ extension View {
 extension Animation {
     /// Opening and folding a section: rows fade, the list height and chevron follow.
     static let fold = Animation.easeInOut(duration: 0.22)
+    /// Swapping the list for a panel in its place (the Stop All confirmation):
+    /// the panel fades and settles in while the popover height follows.
+    static let panel = Animation.smooth(duration: 0.3)
 }
 
 /// Bound to every interface, so the port answers on this Mac's network address

@@ -224,14 +224,18 @@ final class AppModel: ObservableObject {
     /// Asks first, in the popover; `confirmPendingStop` does the stopping.
     func stopAll(_ rows: [PortRow], in name: String) {
         guard !rows.isEmpty else { return }
-        pendingStop = PendingStop(name: name, rows: rows)
+        withAnimation(.panel) { pendingStop = PendingStop(name: name, rows: rows) }
+    }
+
+    func cancelPendingStop() {
+        withAnimation(.panel) { pendingStop = nil }
     }
 
     /// Stops them all at once. A process listening on several ports, or a
     /// container publishing several, is stopped once.
     func confirmPendingStop() {
         guard let rows = pendingStop?.rows else { return }
-        pendingStop = nil
+        withAnimation(.panel) { pendingStop = nil }
         var portsByTarget: [String: [Int]] = [:]
         var targets: [String: Listener] = [:]
         for row in rows {
